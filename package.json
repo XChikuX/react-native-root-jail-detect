@@ -43,7 +43,18 @@
   "keywords": [
     "react-native",
     "ios",
-    "android"
+    "android",
+    "root",
+    "jailbreak",
+    "security",
+    "integrity",
+    "root-detection",
+    "jailbreak-detection",
+    "mobile-security",
+    "device-integrity",
+    "android-root",
+    "ios-jailbreak",
+    "security-sdk"
   ],
   "repository": {
     "type": "git",

@@ -1,5 +1,5 @@
-#import <RootJailDetectSpec/RootJailDetectSpec.h>
+// #import <RootJailDetectSpec/RootJailDetectSpec.h>
 
-@interface RootJailDetect : NSObject <NativeRootJailDetectSpec>
+// @interface RootJailDetect : NSObject <NativeRootJailDetectSpec>
 
-@end
+// @end

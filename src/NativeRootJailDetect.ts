@@ -1,7 +1,10 @@
 import { TurboModuleRegistry, type TurboModule } from 'react-native';
 
 export interface Spec extends TurboModule {
-  multiply(a: number, b: number): number;
+  isDeviceCompromised(): Promise<boolean>;
+  isEmulator?(): Promise<boolean>;
+  isSimulator?(): Promise<boolean>;
+  isDebuggerAttached?(): Promise<boolean>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('RootJailDetect');

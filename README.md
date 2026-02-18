@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/react-native-root-jail-detect.svg)](https://www.npmjs.com/package/react-native-root-jail-detect)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/yourusername/react-native-root-jail-detect/pulls)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/rushikeshpandit/react-native-root-jail-detect/pulls)
 
 A lightweight, blazing-fast React Native module to detect if a device is rooted (Android) or jailbroken (iOS). Perfect for apps that need to ensure device integrity for security-sensitive operations like banking, payments, or enterprise applications.
 
@@ -271,7 +271,7 @@ PRs are always welcome. Whether it's:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-Found a bug? Have a feature request? [File an issue](https://github.com/yourusername/react-native-root-jail-detect/issues) on GitHub!
+Found a bug? Have a feature request? [File an issue](https://github.com/rushikeshpandit/react-native-root-jail-detect/issues) on GitHub!
 
 ## License
 

@@ -8,7 +8,7 @@ A lightweight, blazing-fast React Native module to detect if a device is rooted 
 
 ## Features
 
-- **Fast** - Native implementation for optimal performance
+- **Fast** - Native implementation (Swift and Kotlin) for optimal performance
 - **New Architecture Ready** - Fully supports React Native's new architecture (Fabric & TurboModules)
 - **Google 16kb page size compliant** - Supporting Google's 16kb page size policy.
 - **Simple API** - One method, returns a boolean. That's it.
@@ -172,7 +172,7 @@ Returns a Promise that resolves to a boolean indicating whether the debugger is 
 const isCompromised = await RootJailDetect.isDebuggerAttached();
 ```
 
-## 🔍 Detection Methods
+## Detection Methods
 
 ### Android (Root Detection)
 
@@ -234,7 +234,7 @@ override fun getPackages(): List<ReactPackage> =
     }
 ```
 
-## 🎯 Use Cases
+## Use Cases
 
 Perfect for apps requiring enhanced security:
 
@@ -254,7 +254,7 @@ Perfect for apps requiring enhanced security:
 
 ## Contributing
 
-We love contributions! 🎉
+We love contributions!
 
 PRs are always welcome. Whether it's:
 - Bug fixes
@@ -281,7 +281,7 @@ This project is and will always remain open source. Free to use, modify, and dis
 
 ## Acknowledgments
 
-Built with ❤️ for the React Native community.
+Built with ❤️ in India for the React Native community.
 
 Special thanks to all [contributors](https://github.com/rushikeshpandit/react-native-root-jail-detect/graphs/contributors) who help make this library better!
 
@@ -296,4 +296,4 @@ Special thanks to all [contributors](https://github.com/rushikeshpandit/react-na
 
 **Star the repo if you find it useful!**
 
-Made with 💙 in India for the React Native community
+Made with ❤️ in India for the React Native community

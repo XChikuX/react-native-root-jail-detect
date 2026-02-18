@@ -1,6 +1,6 @@
 {
   "name": "react-native-root-jail-detect",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A lightweight and reliable React Native library to detect rooted Android devices and jailbroken iOS devices using modern Kotlin, Swift, and TypeScript. Built for security-focused mobile applications.",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",

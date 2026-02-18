@@ -41,7 +41,7 @@ function App() {
 
       if (compromised) {
         Alert.alert(
-          '⚠️ Security Warning',
+          'Security Warning',
           'This device appears to be rooted/jailbroken. Some features may be disabled for security reasons.',
           [{ text: 'OK' }]
         );
@@ -150,7 +150,7 @@ function App() {
 
             {isCompromised && (
               <View style={styles.warningBox}>
-                <Text style={styles.warningTitle}>⚠️ Security Notice</Text>
+                <Text style={styles.warningTitle}>Security Notice</Text>
                 <Text style={styles.warningText}>
                   Your device appears to be compromised. This could pose
                   security risks. Sensitive operations may be restricted.

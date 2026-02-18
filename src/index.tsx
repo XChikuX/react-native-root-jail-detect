@@ -3,28 +3,9 @@ import { Platform } from 'react-native';
 import RootJailDetect from './NativeRootJailDetect';
 
 /**
- * Check if the device is compromised (rooted/jailbroken)
- *
- * This method performs multiple security checks to detect if the device
- * has been rooted (Android) or jailbroken (iOS).
- *
- * @returns Promise<boolean> - true if device is compromised, false otherwise
- *
- * @example
- * ```typescript
- * import { isDeviceCompromised } from 'react-native-device-security';
- *
- * const checkSecurity = async () => {
- *   try {
- *     const isCompromised = await isDeviceCompromised();
- *     if (isCompromised) {
- *       Alert.alert('Security Warning', 'This device appears to be rooted/jailbroken');
- *     }
- *   } catch (error) {
- *     console.error('Security check failed:', error);
- *   }
- * };
- * ```
+ * Checks if the device is compromised (rooted on Android, jailbroken on iOS)
+ * @returns {Promise<boolean>} A promise that resolves
+ * to true if the device is compromised, false otherwise
  */
 export async function isDeviceCompromised(): Promise<boolean> {
   try {
@@ -37,9 +18,9 @@ export async function isDeviceCompromised(): Promise<boolean> {
 }
 
 /**
- * Check if running in emulator (Android) or simulator (iOS)
- *
- * @returns Promise<boolean> - true if running in emulator/simulator
+ * Checks if the app is running in an emulator/simulator
+ * @returns {Promise<boolean>} A promise that resolves
+ * to true if running in emulator/simulator, false otherwise
  */
 export async function isEmulator(): Promise<boolean> {
   try {
@@ -56,11 +37,10 @@ export async function isEmulator(): Promise<boolean> {
 }
 
 /**
- * Check if debugger is attached (iOS only)
- *
- * @returns Promise<boolean> - true if debugger is attached
+ * Checks if a debugger is attached to the app (iOS only)
+ * @returns {Promise<boolean>} A promise that resolves
+ * to true if a debugger is attached, false otherwise
  */
-
 export async function isDebuggerAttached(): Promise<boolean> {
   try {
     if (Platform.OS === 'ios' && RootJailDetect.isDebuggerAttached) {

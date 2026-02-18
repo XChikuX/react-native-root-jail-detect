@@ -205,7 +205,9 @@ class RootDetection(private val context: Context) {
                 Build.MODEL.contains("Android SDK built for x86") ||
                 Build.MANUFACTURER.contains("Genymotion") ||
                 Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic") ||
-                "google_sdk" == Build.PRODUCT)
+                "google_sdk" == Build.PRODUCT ||
+                Build.PRODUCT.contains("sdk") || 
+                Build.PRODUCT.contains("simulator") )
     }
 
     /**
@@ -213,6 +215,6 @@ class RootDetection(private val context: Context) {
      * is attached or not
      */
     fun isDebuggerAttached(): Boolean {
-        return Debug.isDebuggerConnected()
+        return Debug.isDebuggerConnected() || Debug.waitingForDebugger()
     }
 }

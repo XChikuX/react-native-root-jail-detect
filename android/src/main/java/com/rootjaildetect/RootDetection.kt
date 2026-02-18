@@ -4,15 +4,26 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Debug
-import java.io.File
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 
+/**
+ * RootDetection
+ *
+ * Provides multiple heuristics to detect whether an Android device
+ * is rooted, running in an emulator, or being debugged.
+ *
+ * Designed for security-sensitive applications and SDKs.
+ */
 class RootDetection(private val context: Context) {
 
     companion object {
-        // Common root management apps
-        private val ROOT_APPS = arrayOf(
+
+        /**
+         * List of well-known root management applications.
+         */
+        private val ROOT_MANAGEMENT_PACKAGES = arrayOf(
             "com.noshufou.android.su",
             "com.noshufou.android.su.elite",
             "eu.chainfire.supersu",
@@ -27,8 +38,10 @@ class RootDetection(private val context: Context) {
             "com.alephzain.framaroot"
         )
 
-        // Common binary paths
-        private val SU_BINARY_PATHS = arrayOf(
+        /**
+         * Common filesystem locations where the "su" binary may exist.
+         */
+        private val SU_BINARY_DIRECTORIES = arrayOf(
             "/data/local/",
             "/data/local/bin/",
             "/data/local/xbin/",
@@ -45,14 +58,19 @@ class RootDetection(private val context: Context) {
             "/dev/"
         )
 
-        // Dangerous system properties
-        private val DANGEROUS_PROPS = mapOf(
+        /**
+         * System properties that indicate an insecure or rooted device.
+         */
+        private val DANGEROUS_SYSTEM_PROPERTIES = mapOf(
             "[ro.debuggable]" to "[1]",
-            "[ro.secure]" to "[0]"
+            "[ro.secure]" to "[0]",
+            "[service.adb.root]" to "[1]"
         )
 
-        // Root-related files and directories
-        private val ROOT_CLOAKING_PATHS = arrayOf(
+        /**
+         * Files and directories commonly used by root hiding frameworks.
+         */
+        private val ROOT_CLOAKING_FILE_PATHS = arrayOf(
             "/system/app/Superuser.apk",
             "/system/etc/init.d/99SuperSUDaemon",
             "/dev/com.koushikdutta.superuser.daemon/",
@@ -61,25 +79,31 @@ class RootDetection(private val context: Context) {
     }
 
     /**
-     * Main method to check if device is rooted
-     * Uses multiple detection techniques for better accuracy
+     * Determines whether the current device is rooted.
+     *
+     * Combines multiple independent detection techniques
+     * to improve accuracy and reduce false negatives.
+     *
+     * @return true if the device is likely rooted, false otherwise
      */
     fun isDeviceRooted(): Boolean {
-        return checkRootMethod1() ||
-               checkRootMethod2() ||
-               checkRootMethod3() ||
-               checkRootMethod4() ||
-               checkRootMethod5() ||
-               checkRootMethod6() ||
-               checkRootMethod7()
+        return hasSuBinaryInCommonDirectories() ||
+                hasInstalledRootManagementApps() ||
+                hasTestKeysInBuildTags() ||
+                canExecuteSuCommand() ||
+                hasDangerousSystemProperties() ||
+                hasWritableSystemPartition() ||
+                hasRootCloakingFiles()
     }
 
     /**
-     * Check #1: Test for SU binary in common paths
+     * Checks for the presence of the "su" binary in common directories.
+     *
+     * Rooted devices usually expose this binary.
      */
-    private fun checkRootMethod1(): Boolean {
-        SU_BINARY_PATHS.forEach { path ->
-            val suFile = File(path + "su")
+    private fun hasSuBinaryInCommonDirectories(): Boolean {
+        SU_BINARY_DIRECTORIES.forEach { directory ->
+            val suFile = File(directory + "su")
             if (suFile.exists()) {
                 return true
             }
@@ -88,38 +112,51 @@ class RootDetection(private val context: Context) {
     }
 
     /**
-     * Check #2: Check for installed root management apps
+     * Checks whether known root management applications are installed.
+     *
+     * Presence of these apps strongly indicates rooting.
      */
-    private fun checkRootMethod2(): Boolean {
-        ROOT_APPS.forEach { packageName ->
+    private fun hasInstalledRootManagementApps(): Boolean {
+        ROOT_MANAGEMENT_PACKAGES.forEach { packageName ->
             try {
                 context.packageManager.getPackageInfo(packageName, 0)
                 return true
-            } catch (e: PackageManager.NameNotFoundException) {
-                // Package not found, continue
+            } catch (_: PackageManager.NameNotFoundException) {
+                // App not installed, continue checking
             }
         }
         return false
     }
 
     /**
-     * Check #3: Check Build tags for test-keys
+     * Verifies whether the device build contains "test-keys".
+     *
+     * Custom ROMs and rooted devices often use test keys.
      */
-    private fun checkRootMethod3(): Boolean {
+    private fun hasTestKeysInBuildTags(): Boolean {
         val buildTags = Build.TAGS
         return buildTags != null && buildTags.contains("test-keys")
     }
 
     /**
-     * Check #4: Try to execute 'su' command
+     * Attempts to locate the "su" binary using shell commands.
+     *
+     * Successful execution indicates root access.
      */
-    private fun checkRootMethod4(): Boolean {
+    private fun canExecuteSuCommand(): Boolean {
         var process: Process? = null
+
         return try {
-            process = Runtime.getRuntime().exec(arrayOf("/system/xbin/which", "su"))
-            val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
-            bufferedReader.readLine() != null
-        } catch (e: Exception) {
+            process = Runtime.getRuntime()
+                .exec(arrayOf("/system/xbin/which", "su"))
+
+            val reader = BufferedReader(
+                InputStreamReader(process.inputStream)
+            )
+
+            reader.readLine() != null
+
+        } catch (_: Exception) {
             false
         } finally {
             process?.destroy()
@@ -127,65 +164,91 @@ class RootDetection(private val context: Context) {
     }
 
     /**
-     * Check #5: Check for dangerous system properties
+     * Reads system properties and checks for insecure configurations.
+     *
+     * Certain properties are modified on rooted devices.
      */
-    private fun checkRootMethod5(): Boolean {
+    private fun hasDangerousSystemProperties(): Boolean {
         var process: Process? = null
+
         try {
             process = Runtime.getRuntime().exec("getprop")
-            val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
+
+            val reader = BufferedReader(
+                InputStreamReader(process.inputStream)
+            )
+
             var line: String?
-            while (bufferedReader.readLine().also { line = it } != null) {
-                DANGEROUS_PROPS.forEach { (key, value) ->
-                    if (line?.contains(key) == true && line?.contains(value) == true) {
+
+            while (reader.readLine().also { line = it } != null) {
+
+                DANGEROUS_SYSTEM_PROPERTIES.forEach { (key, value) ->
+                    if (line?.contains(key) == true &&
+                        line?.contains(value) == true
+                    ) {
                         return true
                     }
                 }
             }
-        } catch (e: Exception) {
-            // Ignore
+
+        } catch (_: Exception) {
+            // Ignore failures
         } finally {
             process?.destroy()
         }
+
         return false
     }
 
     /**
-     * Check #6: Check for RW paths that should be RO
+     * Checks whether critical system partitions are mounted as writable.
+     *
+     * On non-rooted devices, /system should be read-only.
      */
-    private fun checkRootMethod6(): Boolean {
+    private fun hasWritableSystemPartition(): Boolean {
         var process: Process? = null
+
         try {
             process = Runtime.getRuntime().exec("mount")
-            val bufferedReader = BufferedReader(InputStreamReader(process.inputStream))
-            var line: String?
-            while (bufferedReader.readLine().also { line = it } != null) {
-                val args = line?.split(" ") ?: continue
-                if (args.size < 4) continue
-                
-                val mountPoint = args[1]
-                val mountType = args[2]
-                val mountOptions = args[3]
 
-                // Check if /system is mounted as rw
-                if (mountPoint == "/system" && 
-                    mountOptions.contains("rw")) {
+            val reader = BufferedReader(
+                InputStreamReader(process.inputStream)
+            )
+
+            var line: String?
+
+            while (reader.readLine().also { line = it } != null) {
+
+                val parts = line?.split(" ") ?: continue
+
+                if (parts.size < 4) continue
+
+                val mountPoint = parts[1]
+                val mountOptions = parts[3]
+
+                if (mountPoint == "/system" &&
+                    mountOptions.contains("rw")
+                ) {
                     return true
                 }
             }
-        } catch (e: Exception) {
-            // Ignore
+
+        } catch (_: Exception) {
+            // Ignore failures
         } finally {
             process?.destroy()
         }
+
         return false
     }
 
     /**
-     * Check #7: Check for root cloaking files
+     * Searches for files commonly used to hide or manage root.
+     *
+     * These files are rarely present on stock devices.
      */
-    private fun checkRootMethod7(): Boolean {
-        ROOT_CLOAKING_PATHS.forEach { path ->
+    private fun hasRootCloakingFiles(): Boolean {
+        ROOT_CLOAKING_FILE_PATHS.forEach { path ->
             if (File(path).exists()) {
                 return true
             }
@@ -194,8 +257,11 @@ class RootDetection(private val context: Context) {
     }
 
     /**
-     * Additional check: Verify if running in emulator
-     * Emulators are often rooted by default
+     * Determines whether the application is running inside an emulator.
+     *
+     * Many emulators run with root privileges by default.
+     *
+     * @return true if running on an emulator
      */
     fun isEmulator(): Boolean {
         return (Build.FINGERPRINT.startsWith("generic") ||
@@ -204,17 +270,22 @@ class RootDetection(private val context: Context) {
                 Build.MODEL.contains("Emulator") ||
                 Build.MODEL.contains("Android SDK built for x86") ||
                 Build.MANUFACTURER.contains("Genymotion") ||
-                Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic") ||
-                "google_sdk" == Build.PRODUCT ||
-                Build.PRODUCT.contains("sdk") || 
-                Build.PRODUCT.contains("simulator") )
+                Build.BRAND.startsWith("generic") &&
+                Build.DEVICE.startsWith("generic") ||
+                Build.PRODUCT == "google_sdk" ||
+                Build.PRODUCT.contains("sdk") ||
+                Build.PRODUCT.contains("simulator"))
     }
 
     /**
-     * Additional check: Verify if debugger
-     * is attached or not
+     * Checks whether a debugger is currently attached to the process.
+     *
+     * Useful for detecting reverse engineering and runtime inspection.
+     *
+     * @return true if debugging is active
      */
     fun isDebuggerAttached(): Boolean {
-        return Debug.isDebuggerConnected() || Debug.waitingForDebugger()
+        return Debug.isDebuggerConnected() ||
+                Debug.waitingForDebugger()
     }
 }

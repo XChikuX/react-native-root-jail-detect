@@ -245,16 +245,25 @@ class JailbreakDetection: NSObject {
     /// Check for debugger attachment
     @objc
     static func isDebuggerAttached() -> Bool {
-        var info = kinfo_proc()
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
-        var size = MemoryLayout<kinfo_proc>.stride
-        
-        let result = sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0)
-        
-        if result != 0 {
-            return false
+        var debuggerIsAttached = false
+
+        var name: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        var info: kinfo_proc = kinfo_proc()
+        var info_size = MemoryLayout<kinfo_proc>.size
+
+        let success = name.withUnsafeMutableBytes { (nameBytePtr: UnsafeMutableRawBufferPointer) -> Bool in
+            guard let nameBytesBlindMemory = nameBytePtr.bindMemory(to: Int32.self).baseAddress else { return false }
+            return -1 != sysctl(nameBytesBlindMemory, 4, &info, &info_size, nil, 0)
         }
-        
-        return (info.kp_proc.p_flag & P_TRACED) != 0
+
+        if !success {
+            debuggerIsAttached = false
+        }
+
+        if !debuggerIsAttached && (info.kp_proc.p_flag & P_TRACED) != 0 {
+            debuggerIsAttached = true
+        }
+
+        return debuggerIsAttached
     }
 }

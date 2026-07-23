@@ -246,7 +246,7 @@ bun run test --maxWorkers=2
 bun run specs
 
 # Build publishable JS and declaration output
-bun run prepare
+bun run build
 
 # Example app
 bun run example start
@@ -280,7 +280,7 @@ Run:
 bun run typecheck
 bun run lint
 bun run test --maxWorkers=2
-bun run prepare
+bun run build
 ```
 
 ### Nitro/codegen API changes

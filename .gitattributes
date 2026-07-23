@@ -1,3 +1,5 @@
 *.pbxproj -text
+# Force LF line endings for all text files so Windows checkouts stay POSIX-clean.
+* text=auto eol=lf
 # specific for windows script files
 *.bat text eol=crlf

@@ -32,6 +32,10 @@ apply plugin: "kotlin-android"
 
 apply plugin: "com.facebook.react"
 
+// Pull in Nitrogen-generated Kotlin autolinking sources
+// (adds `nitrogen/generated/android/kotlin` to the main source set).
+apply from: "../nitrogen/generated/android/RootJailDetect+autolinking.gradle"
+
 android {
   namespace "com.rootjaildetect"
 
@@ -64,9 +68,9 @@ android {
 
   externalNativeBuild {
     cmake {
-        path "src/main/java/com/rootjaildetect/native/CMakeLists.txt"
+        path "CMakeLists.txt"
     }
-}
+  }
 }
 
 dependencies {

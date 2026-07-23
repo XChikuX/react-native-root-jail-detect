@@ -1,132 +1,62 @@
-import { Platform } from 'react-native';
-import RootJailDetect from './NativeRootJailDetect';
+// Public entry point for `react-native-root-jail-detect`.
+//
+// This file is a barrel only. All detection logic lives in the native Nitro
+// HybridObjects (`src/specs/*.nitro.ts`); legacy boolean wrappers live in
+// `src/wrappers.ts`. Per the api-design rules, the only runtime declaration
+// here is re-export of the wrapper functions and types.
+//
+// The detailed, scored API is the primary API going forward. The legacy
+// published names (`isDeviceCompromised`, `isEmulator`, `isDebuggerAttached`,
+// `getDetectionReasons`, `startSecurityWatchdog`, `stopSecurityWatchdog`) are
+// preserved as thin wrappers over `checkDetailed()` so existing consumers do
+// not need to change call sites.
 
-export enum ProtectionMode {
-  LOG_ONLY = 'LOG_ONLY',
-  THROW_EXCEPTION = 'THROW_EXCEPTION',
-  TERMINATE = 'TERMINATE',
-}
+export type {
+  Confidence,
+  DetectionSignal,
+  DeviceRiskResult,
+  Platform,
+  ProtectionMode,
+  RootJailDetectOptions,
+  SecurityWatchdogOptions,
+  Severity,
+} from './specs';
 
-export interface SecurityWatchdogOptions {
-  interval?: number;
-  protectionMode?: ProtectionMode;
-}
+export type { RootJailDetect, SecurityWatchdog } from './specs';
 
-/**
- * Checks if the device is compromised (rooted on Android, jailbroken on iOS)
- * @returns {Promise<boolean>} A promise that resolves
- * to true if the device is compromised, false otherwise
- */
-export async function isDeviceCompromised(): Promise<boolean> {
-  try {
-    const result = await RootJailDetect.isDeviceCompromised();
-    return Boolean(result);
-  } catch (error) {
-    console.error('Error checking device security:', error);
-    throw error;
-  }
-}
-
-/**
- * Checks if the app is running in an emulator/simulator
- * @returns {Promise<boolean>} A promise that resolves
- * to true if running in emulator/simulator, false otherwise
- */
-export async function isEmulator(): Promise<boolean> {
-  try {
-    if (Platform.OS === 'android' && RootJailDetect.isEmulator) {
-      return Boolean(await RootJailDetect.isEmulator());
-    } else if (Platform.OS === 'ios' && RootJailDetect.isSimulator) {
-      return Boolean(await RootJailDetect.isSimulator());
-    }
-    return false;
-  } catch (error) {
-    console.error('Error checking emulator status:', error);
-    return false;
-  }
-}
-
-/**
- * Checks if a debugger is attached to the app
- * @returns {Promise<boolean>} A promise that resolves
- * to true if a debugger is attached, false otherwise
- */
-export async function isDebuggerAttached(): Promise<boolean> {
-  try {
-    if (RootJailDetect.isDebuggerAttached) {
-      return Boolean(await RootJailDetect.isDebuggerAttached());
-    }
-    return false;
-  } catch (error) {
-    console.error('Error checking debugger status:', error);
-    return false;
-  }
-}
-
-/**
- * Gives the reason for whether the device is compromised
- * (rooted on Android or jailbroken on iOS).
- *
- * This method invokes native security heuristics
- * and returns the result asynchronously.
- *
- * @returns Promise that resolves to array of string if the device
- *          is compromised, empty otherwise
- */
-
-export async function getDetectionReasons(): Promise<string[]> {
-  try {
-    if (RootJailDetect.getDetectionReasons) {
-      let reasons = await RootJailDetect.getDetectionReasons();
-
-      return reasons;
-    } else {
-      return [];
-    }
-  } catch (error) {
-    console.error('Error checking debugger status:', error);
-    return [];
-  }
-}
-
-/**
- * Starts the runtime security watchdog with the specified interval and protection mode.
- *
- * @param {SecurityWatchdogOptions} [options] - Object containing the options for the security watchdog
- * @param {number} [options.interval=3000] - Interval in milliseconds between each security check
- * @param {string} [options.protectionMode='LOG_ONLY'] - Protection mode to use. Can be either 'LOG_ONLY' or 'TERMINATE'
- *
- * @example
- * RootJailDetect.startSecurityWatchdog({
- *   interval: 5000,
- *   protectionMode: "TERMINATE"
- * })
- */
-export function startSecurityWatchdog(
-  options: SecurityWatchdogOptions = {}
-): void {
-  const interval = options.interval ?? 3000;
-  const protectionMode = options.protectionMode ?? 'LOG_ONLY';
-
-  RootJailDetect.startSecurityWatchdog({ interval, protectionMode });
-}
-
-/**
- * Stop runtime watchdog
- *
- * @example
- * RootJailDetect.stopSecurityWatchdog()
- */
-export function stopSecurityWatchdog(): void {
-  RootJailDetect.stopSecurityWatchdog();
-}
-
-export type { RootJailDetect };
-export default {
+export {
+  checkDetailed,
+  configure,
+  getDetectionReasons,
+  isDebuggerAttached,
   isDeviceCompromised,
   isEmulator,
-  isDebuggerAttached,
-  getDetectionReasons,
   startSecurityWatchdog,
   stopSecurityWatchdog,
+} from './wrappers';
+
+export type { LegacySecurityWatchdogOptions } from './wrappers';
+
+// Backwards-compatible default export. Existing consumers that import the
+// default object keep working unchanged.
+import {
+  checkDetailed as _checkDetailed,
+  configure as _configure,
+  getDetectionReasons as _getDetectionReasons,
+  isDebuggerAttached as _isDebuggerAttached,
+  isDeviceCompromised as _isDeviceCompromised,
+  isEmulator as _isEmulator,
+  startSecurityWatchdog as _startSecurityWatchdog,
+  stopSecurityWatchdog as _stopSecurityWatchdog,
+} from './wrappers';
+
+export default {
+  checkDetailed: _checkDetailed,
+  configure: _configure,
+  getDetectionReasons: _getDetectionReasons,
+  isDebuggerAttached: _isDebuggerAttached,
+  isDeviceCompromised: _isDeviceCompromised,
+  isEmulator: _isEmulator,
+  startSecurityWatchdog: _startSecurityWatchdog,
+  stopSecurityWatchdog: _stopSecurityWatchdog,
 };

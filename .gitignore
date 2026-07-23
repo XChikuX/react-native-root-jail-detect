@@ -61,13 +61,7 @@ buck-out/
 android/app/libs
 android/keystores/debug.keystore
 
-# Yarn
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/sdks
-!.yarn/versions
+# Bun (lockfile is committed to version control)
 
 # Expo
 .expo/
@@ -83,4 +77,8 @@ ios/generated
 android/generated
 
 # React Native Nitro Modules
-nitrogen/
+# nitrogen/generated/ is committed so consumers can build the native
+# library without running codegen themselves (see nitro.json + PLAN.md).
+nitrogen/*
+!nitrogen/generated/
+!nitrogen/generated/**

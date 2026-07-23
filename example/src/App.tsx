@@ -14,6 +14,8 @@ import {
   isEmulator,
   isDebuggerAttached,
   getDetectionReasons,
+  checkDetailed,
+  type DeviceRiskResult,
 } from 'react-native-root-jail-detect';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,10 +25,17 @@ function App() {
   const [isEmu, setIsEmu] = useState<boolean | null>(null);
   const [isDebugger, setIsDebugger] = useState<boolean | null>(null);
   const [detectionReasons, setDetectionReasons] = useState<string[]>([]);
+  const [detailed, setDetailed] = useState<DeviceRiskResult | null>(null);
 
   const checkDeviceSecurity = async () => {
     setLoading(true);
     try {
+      // Run one structured pass and derive the legacy booleans from it so all
+      // detection logic stays in the native scoring core. `checkDetailed` is
+      // the primary API; the boolean wrappers remain for backwards compat.
+      const result = await checkDetailed();
+      setDetailed(result);
+
       const [compromised, emulator, debuggerAttached, detectionReason]: [
         boolean,
         boolean,
@@ -66,6 +75,11 @@ function App() {
   const getStatusColor = (value: boolean | null) => {
     if (value === null) return '#999';
     return value ? '#ff4444' : '#00C851';
+  };
+
+  const getScoreColor = (score: number | undefined) => {
+    if (score === undefined) return '#999';
+    return score > 0 ? '#ff9800' : '#00C851';
   };
 
   const getStatusText = (value: boolean | null) => {
@@ -144,6 +158,37 @@ function App() {
               <Text style={styles.resultDescription}>
                 Checks if debugger is currently attached
               </Text>
+            </View>
+
+            <View style={styles.resultCard}>
+              <View style={styles.resultHeader}>
+                <Text style={styles.resultLabel}>Detailed Risk Result</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    { backgroundColor: getScoreColor(detailed?.score) },
+                  ]}
+                >
+                  <Text style={styles.statusText}>
+                    {detailed ? `${Math.round(detailed.score)}` : '...'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.resultDescription}>
+                Primary scored API. Score 0-100, confidence:{' '}
+                {detailed?.confidence ?? '—'}
+                {detailed?.partial ? ' (partial)' : ''}
+              </Text>
+              {detailed && detailed.signals.length > 0 && (
+                <View style={styles.warningBox}>
+                  <Text style={styles.warningTitle}>Signals</Text>
+                  {detailed.signals.map((signal, index) => (
+                    <Text key={index} style={styles.warningText}>
+                      - {signal.id} ({signal.severity}, {signal.score})
+                    </Text>
+                  ))}
+                </View>
+              )}
             </View>
 
             <TouchableOpacity

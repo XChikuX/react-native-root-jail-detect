@@ -3,28 +3,20 @@
   "bugs": {
     "url": "https://github.com/rushikeshpandit/react-native-root-jail-detect/issues"
   },
-  "codegenConfig": {
-    "android": {
-      "javaPackageName": "com.rootjaildetect"
-    },
-    "jsSrcsDir": "src",
-    "name": "RootJailDetectSpec",
-    "type": "modules"
-  },
   "commitlint": {
     "extends": [
       "@commitlint/config-conventional"
     ]
   },
   "create-react-native-library": {
-    "languages": "kotlin-objc",
+    "languages": "cpp-kotlin-swift",
     "tools": [
       "jest",
       "lefthook",
       "release-it",
       "eslint"
     ],
-    "type": "turbo-module",
+    "type": "nitro-module",
     "version": "0.57.2"
   },
   "description": "A lightweight and reliable React Native library to detect rooted Android devices and jailbroken iOS devices using modern Kotlin, Swift, and TypeScript. Built for security-focused mobile applications.",
@@ -67,8 +59,9 @@
     "android",
     "ios",
     "cpp",
+    "nitro.json",
+    "nitrogen/generated",
     "*.podspec",
-    "react-native.config.js",
     "!ios/build",
     "!android/build",
     "!android/gradle",
@@ -125,7 +118,8 @@
   "packageManager": "yarn@4.11.0",
   "peerDependencies": {
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "react-native-nitro-modules": ">=0.36.0"
   },
   "prettier": {
     "quoteProps": "consistent",
@@ -180,10 +174,12 @@
   },
   "scripts": {
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
-    "example": "yarn workspace react-native-root-jail-detect-example",
+    "build": "bob build",
+    "example": "bun run --cwd example",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
-    "prepare": "bob build",
+    "prepublishOnly": "bob build",
     "release": "release-it --only-version",
+    "specs": "nitrogen",
     "test": "jest",
     "typecheck": "tsc"
   },

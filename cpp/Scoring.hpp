@@ -35,11 +35,30 @@ namespace margelo::nitro::rootjaildetect {
     std::vector<DetectionSignal> contributing;
   };
 
+  namespace detail {
+    /// Maps a Severity to the semantically equivalent Confidence level.
+    /// Both enums use the same ordinal values (LOW=0, MEDIUM=1, HIGH=2) but are
+    /// distinct C++ scoped enum types and cannot be compared or assigned across
+    /// types.
+    inline Confidence severityToConfidence(Severity severity) noexcept {
+      switch (severity) {
+        case Severity::LOW:
+          return Confidence::LOW;
+        case Severity::MEDIUM:
+          return Confidence::MEDIUM;
+        case Severity::HIGH:
+          return Confidence::HIGH;
+      }
+    }
+  }
+
   /// Aggregate `signals` into a clamped score and a confidence level.
   inline AggregatedScore aggregateSignals(const std::vector<DetectionSignal>& signals) noexcept {
     AggregatedScore result;
     std::vector<std::string> seenIds;
     seenIds.reserve(signals.size());
+
+    Severity highestSeverity = Severity::LOW;
 
     for (const DetectionSignal& signal : signals) {
       // Unavailable checks carry no evidence and must not affect the score.
@@ -56,11 +75,14 @@ namespace margelo::nitro::rootjaildetect {
       result.score += signal.score;
       result.contributing.push_back(signal);
 
-      // Confidence tracks the strongest contributor seen so far.
-      if (signal.severity > result.confidence) {
-        result.confidence = signal.severity;
+      // Track the strongest contributor seen so far using its own enum type.
+      if (signal.severity > highestSeverity) {
+        highestSeverity = signal.severity;
       }
     }
+
+    // Map the highest-severity contributor to a confidence level.
+    result.confidence = detail::severityToConfidence(highestSeverity);
 
     // Clamp to the documented 0-100 range. Negative weights are not part of the
     // public catalog, but clamp defensively in case a caller synthesizes one.
@@ -74,7 +96,7 @@ namespace margelo::nitro::rootjaildetect {
     // and reaching the MEDIUM severity band also implies MEDIUM. We only report
     // HIGH confidence when multiple distinct high-severity signals fire, which
     // is a stronger indicator than a single (possibly spoofable) hit.
-    if (result.confidence == Severity::HIGH) {
+    if (highestSeverity == Severity::HIGH) {
       result.confidence = Confidence::MEDIUM;
       size_t highCount = 0;
       for (const DetectionSignal& signal : result.contributing) {

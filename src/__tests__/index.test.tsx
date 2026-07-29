@@ -171,12 +171,12 @@ describe('@psync/anti-jailbreak wrappers', () => {
   });
 
   describe('getDetectionReasons()', () => {
-    it('derives reasons from evidence then id, skipping unavailable signals', async () => {
+    it('derives reasons from evidence then known signal text, skipping unavailable signals', async () => {
       mockCheckDetailed.mockResolvedValue(
         stubResult({
           signals: [
             {
-              id: 'android.su',
+              id: 'android.su.binary',
               severity: 'low',
               score: 10,
               evidence: 'su binary present',
@@ -185,10 +185,10 @@ describe('@psync/anti-jailbreak wrappers', () => {
               id: 'android.maps.zygisk',
               severity: 'high',
               score: 30,
-              // no evidence -> falls back to id
+              // no evidence -> falls back to the stable reason catalog
             },
             {
-              id: 'android.selinux',
+              id: 'android.check.selinux',
               severity: 'high',
               score: 25,
               unavailable: true, // must be skipped
@@ -196,10 +196,10 @@ describe('@psync/anti-jailbreak wrappers', () => {
           ],
         })
       );
-      await expect(getDetectionReasons()).resolves.toEqual([
-        'su binary present',
-        'android.maps.zygisk',
-      ]);
+        await expect(getDetectionReasons()).resolves.toEqual([
+          'su binary present',
+          'A Zygisk artifact is mapped into the process.',
+        ]);
     });
 
     it('deduplicates reasons', async () => {
@@ -207,7 +207,7 @@ describe('@psync/anti-jailbreak wrappers', () => {
         stubResult({
           signals: [
             {
-              id: 'android.su',
+              id: 'android.su.binary',
               severity: 'low',
               score: 10,
               evidence: 'duplicate',

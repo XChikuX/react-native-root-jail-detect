@@ -8,22 +8,25 @@
 /// The watchdog consumes `RootJailDetect::checkDetailed()` with the configured
 /// threshold; it must not duplicate detection logic.
 ///
-/// PR 1 (Nitro skeleton) tracks running state and resolves `start()`/`stop()`
-/// immediately. A real background loop lands in PR 3 (iOS separation + watchdog)
-/// so that lifecycle state can be hardened with the rest of the watchdog work.
-///
 
 #pragma once
 
+#include "DeviceRiskAssessment.hpp"
 #include "HybridSecurityWatchdogSpec.hpp"
 
 #include <atomic>
+#include <condition_variable>
+#include <memory>
+#include <mutex>
+#include <thread>
 
 namespace margelo::nitro::rootjaildetect {
 
   class HybridSecurityWatchdog final : public HybridSecurityWatchdogSpec {
   public:
     HybridSecurityWatchdog();
+    explicit HybridSecurityWatchdog(std::shared_ptr<RootJailDetectConfiguration> configuration);
+    ~HybridSecurityWatchdog() override;
 
   public:
     // Properties
@@ -40,6 +43,14 @@ namespace margelo::nitro::rootjaildetect {
 
   private:
     std::atomic<bool> _isRunning{false};
+    std::shared_ptr<RootJailDetectConfiguration> _configuration;
+    std::mutex _lifecycleMutex;
+    std::condition_variable _wake;
+    std::thread _thread;
+    double _intervalMs = 3000.0;
+    ProtectionMode _protectionMode = ProtectionMode::LOG_ONLY;
+
+    void run();
   };
 
 } // namespace margelo::nitro::rootjaildetect

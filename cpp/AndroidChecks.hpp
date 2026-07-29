@@ -17,6 +17,7 @@
 
 #include "DetectionSignal.hpp"
 
+#include <chrono>
 #include <vector>
 
 namespace margelo::nitro::rootjaildetect {
@@ -28,11 +29,13 @@ namespace margelo::nitro::rootjaildetect {
     /// `DeviceRiskResult.debuggerDetected`; does not affect the score unless the
     /// caller configures `treatDebuggerAsCompromise`.
     bool debuggerDetected = false;
+    bool partial = false;
   };
 
   /// Run the Android Phase 1 detection pass. `includeEvidence` controls whether
   /// redacted evidence strings are attached to each emitted signal. This
   /// function never throws; every probe degrades to "no finding" on failure.
-  AndroidCheckResult runAndroidChecks(bool includeEvidence) noexcept;
+  AndroidCheckResult runAndroidChecks(bool includeEvidence,
+                                      std::chrono::steady_clock::time_point deadline) noexcept;
 
 } // namespace margelo::nitro::rootjaildetect

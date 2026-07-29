@@ -30,6 +30,28 @@ function fireAsync(promise: Promise<unknown>, context: string): void {
   });
 }
 
+const signalReasons: Record<string, string> = {
+  'android.bootloader.unlocked': 'Bootloader verification reports an unlocked state.',
+  'android.build.test_keys': 'The Android build uses test keys.',
+  'android.cmdline.instrumentation': 'Runtime instrumentation was found in the process command line.',
+  'android.debugger.tracerpid': 'Process status indicates a debugger is attached (TracerPid).',
+  'android.emulator': 'Multiple Android build properties indicate an emulator.',
+  'android.maps.frida': 'A Frida artifact is mapped into the process.',
+  'android.maps.lsposed': 'An LSPosed or Xposed artifact is mapped into the process.',
+  'android.maps.riru': 'A Riru artifact is mapped into the process.',
+  'android.maps.zygisk': 'A Zygisk artifact is mapped into the process.',
+  'android.mount.magisk': 'A known root-framework artifact is visible in mount metadata.',
+  'android.mount.overlay': 'A root-framework artifact is visible only in the app mount namespace.',
+  'android.root_manager.dir': 'A conventional root-manager location is accessible.',
+  'android.selinux.permissive': 'SELinux is not enforcing.',
+  'android.socket.instrumentation': 'Runtime instrumentation exposed a local socket.',
+  'android.su.binary': 'A conventional su binary is accessible.',
+  'ios.debugger.sysctl': 'Process state indicates a debugger is attached (sysctl).',
+  'ios.dyld.hook': 'A suspicious runtime hook image is loaded.',
+  'ios.jailbreak.artifact': 'A known jailbreak artifact is accessible.',
+  'ios.simulator': 'The app is running in the iOS simulator.',
+};
+
 /**
  * Apply configuration that affects subsequent `checkDetailed()` passes and the
  * security watchdog. Passing `undefined` for a field keeps the existing value.
@@ -137,7 +159,7 @@ export async function getDetectionReasons(): Promise<string[]> {
         // detection reason.
         continue;
       }
-      reasons.add(signal.evidence ?? signal.id);
+      reasons.add(signal.evidence ?? signalReasons[signal.id] ?? signal.id);
     }
     return Array.from(reasons);
   } catch (error) {

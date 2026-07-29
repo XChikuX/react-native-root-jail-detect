@@ -51,7 +51,9 @@ namespace margelo::nitro::rootjaildetect {
     };
 
     // Tokens that, when seen in mount metadata, strongly suggest a root
-    // framework's overlay/bind mounts are present.
+    // framework's overlay/bind mounts are present. Note: `kernelsu` and `apatch`
+    // map to `ANDROID_MOUNT_MAGISK` by design so all root-framework mount
+    // artifacts share one published signal class and deduplicate cleanly.
     constexpr PatternEntry K_MOUNT_PATTERNS[] = {
       {"magisk",        SignalId::ANDROID_MOUNT_MAGISK},
       {".magisk",       SignalId::ANDROID_MOUNT_MAGISK},
@@ -135,7 +137,9 @@ namespace margelo::nitro::rootjaildetect {
           if (!haystack.empty()) {
             for (size_t e = 0; e < entryCount; ++e) {
               if (containsCI(haystack, entries[e].token)) {
-                std::string evidence(haystack);
+                // Keep evidence explainable without returning raw mount lines or
+                // mapped paths, which can disclose app-private locations.
+                std::string evidence(entries[e].token);
                 recordOnce(out, seen, entries[e].signalId, std::move(evidence));
                 break; // one signal per maps line is enough
               }
@@ -188,6 +192,24 @@ namespace margelo::nitro::rootjaildetect {
               findings, seen, /*usePathnameOnly=*/false);
     scanLines(mountsContent, K_MOUNT_PATTERNS, sizeof(K_MOUNT_PATTERNS) / sizeof(K_MOUNT_PATTERNS[0]),
               findings, seen, /*usePathnameOnly=*/false);
+    return findings;
+  }
+
+  std::vector<ProcFinding> scanNamespaceOnlyMountArtifacts(
+    std::string_view selfMountinfoContent,
+    std::string_view initMountinfoContent
+  ) noexcept {
+    std::vector<ProcFinding> findings;
+    // A different mount namespace is normal for Android apps. Only report a
+    // known root token that is visible to this process and absent from PID 1.
+    for (const PatternEntry& entry : K_MOUNT_PATTERNS) {
+      if (containsCI(selfMountinfoContent, entry.token) &&
+          !containsCI(initMountinfoContent, entry.token)) {
+        findings.push_back(ProcFinding{SignalId::ANDROID_MOUNT_OVERLAY,
+                                       "namespace-only-root-artifact"});
+        break;
+      }
+    }
     return findings;
   }
 

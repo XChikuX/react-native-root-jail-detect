@@ -49,6 +49,14 @@ namespace margelo::nitro::rootjaildetect {
     std::string_view mountsContent
   ) noexcept;
 
+  /// Find suspicious mount artifacts visible in the app namespace but absent
+  /// from the initial namespace. Namespace identity is never a finding by
+  /// itself; only known root-framework content that differs is reported.
+  std::vector<ProcFinding> scanNamespaceOnlyMountArtifacts(
+    std::string_view selfMountinfoContent,
+    std::string_view initMountinfoContent
+  ) noexcept;
+
   /// Parse `TracerPid:` from `/proc/self/status` content. Returns `std::nullopt`
   /// when the field is absent or unparseable. A nonzero value means a tracer is
   /// attached; this is reported as an informational signal, not as compromise.

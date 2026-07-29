@@ -9,14 +9,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
-import {
-  isDeviceCompromised,
-  isEmulator,
-  isDebuggerAttached,
-  getDetectionReasons,
-  checkDetailed,
-  type DeviceRiskResult,
-} from '@psync/anti-jailbreak';
+import { checkDetailed, type DeviceRiskResult } from '@psync/anti-jailbreak';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 function App() {
@@ -30,30 +23,30 @@ function App() {
   const checkDeviceSecurity = async () => {
     setLoading(true);
     try {
-      // Run one structured pass and derive the legacy booleans from it so all
-      // detection logic stays in the native scoring core. `checkDetailed` is
-      // the primary API; the boolean wrappers remain for backwards compat.
+      // Run one structured pass. The example derives display values locally so
+      // rechecking the UI never invokes the native detectors multiple times.
       const result = await checkDetailed();
       setDetailed(result);
 
-      const [compromised, emulator, debuggerAttached, detectionReason]: [
-        boolean,
-        boolean,
-        boolean,
-        string[]
-      ] = await Promise.all([
-        isDeviceCompromised(),
-        isEmulator(),
-        isDebuggerAttached(),
-        getDetectionReasons(),
-      ]);
+      setIsCompromised(result.compromised);
+      setIsEmu(
+        result.signals.some(
+          (signal) =>
+            signal.id === 'android.emulator' || signal.id === 'ios.simulator'
+        )
+      );
+      setIsDebugger(result.debuggerDetected);
+      setDetectionReasons(
+        Array.from(
+          new Set(
+            result.signals
+              .filter((signal) => signal.unavailable !== true)
+              .map((signal) => signal.evidence ?? signal.id)
+          )
+        )
+      );
 
-      setIsCompromised(compromised);
-      setIsEmu(emulator);
-      setIsDebugger(debuggerAttached);
-      setDetectionReasons(detectionReason);
-
-      if (compromised) {
+      if (result.compromised) {
         Alert.alert(
           'Security Warning',
           'This device appears to be rooted/jailbroken. Some features may be disabled for security reasons.',
@@ -176,8 +169,11 @@ function App() {
               </View>
               <Text style={styles.resultDescription}>
                 Primary scored API. Score 0-100, confidence:{' '}
-                {detailed?.confidence ?? '—'}
-                {detailed?.partial ? ' (partial)' : ''}
+                 {detailed?.confidence ?? '—'}
+                 {detailed?.partial ? ' (partial)' : ''}
+               </Text>
+              <Text style={styles.resultDescription}>
+                Completed in {detailed ? `${Math.round(detailed.elapsedMs)} ms` : '...'}
               </Text>
               {detailed && detailed.signals.length > 0 && (
                 <View style={styles.warningBox}>

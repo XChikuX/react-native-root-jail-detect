@@ -6,8 +6,10 @@
 #include "SignalCatalog.hpp"
 
 #if defined(__ANDROID__)
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/system_properties.h>
+#include <unistd.h>
 #endif
 
 #include <algorithm>
@@ -51,6 +53,16 @@ namespace margelo::nitro::rootjaildetect {
       // enough information to treat files and directories uniformly.
       std::string nullTerminated(path);
       return ::stat(nullTerminated.c_str(), &st) == 0;
+    }
+
+    bool pathCanBeOpened(std::string_view path) noexcept {
+      std::string nullTerminated(path);
+      const int descriptor = ::open(nullTerminated.c_str(), O_RDONLY | O_CLOEXEC);
+      if (descriptor < 0) {
+        return false;
+      }
+      ::close(descriptor);
+      return true;
     }
 
     // Read a system property into a small stack buffer. Returns an empty string
@@ -120,12 +132,12 @@ namespace margelo::nitro::rootjaildetect {
     std::vector<std::string_view> seen;
 #if defined(__ANDROID__)
     for (std::string_view dir : K_ROOT_MANAGER_DIRS) {
-      if (pathExists(dir)) {
+      if (pathExists(dir) || pathCanBeOpened(dir)) {
         recordOnce(findings, seen, SignalId::ANDROID_ROOT_MANAGER_DIR, std::string(dir));
       }
     }
     for (std::string_view su : K_SU_BINARIES) {
-      if (pathExists(su)) {
+      if (pathExists(su) || pathCanBeOpened(su)) {
         recordOnce(findings, seen, SignalId::ANDROID_SU_BINARY, std::string(su));
       }
     }
@@ -147,6 +159,15 @@ namespace margelo::nitro::rootjaildetect {
     std::string buildTags = readProperty("ro.build.tags");
     if (!buildTags.empty() && containsCI(buildTags, "test-keys")) {
       recordOnce(findings, seen, SignalId::ANDROID_BUILD_TEST_KEYS, "ro.build.tags=test-keys");
+    }
+
+    const std::string hardware = readProperty("ro.hardware");
+    const std::string product = readProperty("ro.product.name");
+    const std::string fingerprint = readProperty("ro.build.fingerprint");
+    if (containsCI(hardware, "goldfish") || containsCI(hardware, "ranchu") ||
+        containsCI(product, "sdk_gphone") || containsCI(product, "emulator") ||
+        containsCI(fingerprint, "generic")) {
+      recordOnce(findings, seen, SignalId::ANDROID_EMULATOR, "android-emulator-property");
     }
 
     // Verified boot state: `orange`/`unlocked` means the bootloader is

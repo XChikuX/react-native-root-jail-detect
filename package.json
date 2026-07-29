@@ -62,6 +62,8 @@
     "cpp",
     "nitro.json",
     "nitrogen/generated",
+    "app.plugin.js",
+    "plugin",
     "*.podspec",
     "!ios/build",
     "!android/build",

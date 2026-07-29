@@ -22,11 +22,23 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_SU_BINARY) return SignalSpec{SignalId::ANDROID_SU_BINARY, Severity::LOW, 10.0};
     if (id == SignalId::ANDROID_BUILD_TEST_KEYS) return SignalSpec{SignalId::ANDROID_BUILD_TEST_KEYS, Severity::LOW, 10.0};
     if (id == SignalId::ANDROID_MOUNT_OVERLAY) return SignalSpec{SignalId::ANDROID_MOUNT_OVERLAY, Severity::LOW, 10.0};
+    if (id == SignalId::ANDROID_CMDLINE_INSTRUMENTATION) return SignalSpec{SignalId::ANDROID_CMDLINE_INSTRUMENTATION, Severity::HIGH, 30.0};
+    if (id == SignalId::ANDROID_SOCKET_INSTRUMENTATION) return SignalSpec{SignalId::ANDROID_SOCKET_INSTRUMENTATION, Severity::HIGH, 30.0};
     // Informational: contributes 0 by default. Debugger state is reported
     // separately on `DeviceRiskResult.debuggerDetected` and only folds into
     // `compromised` when `treatDebuggerAsCompromise` is configured.
     if (id == SignalId::ANDROID_DEBUGGER_TRACERPID) return SignalSpec{SignalId::ANDROID_DEBUGGER_TRACERPID, Severity::LOW, 0.0};
     if (id == SignalId::IOS_SIMULATOR) return SignalSpec{SignalId::IOS_SIMULATOR, Severity::MEDIUM, 20.0};
+    if (id == SignalId::IOS_JAILBREAK_ARTIFACT) return SignalSpec{SignalId::IOS_JAILBREAK_ARTIFACT, Severity::MEDIUM, 20.0};
+    if (id == SignalId::IOS_DYLD_HOOK) return SignalSpec{SignalId::IOS_DYLD_HOOK, Severity::HIGH, 30.0};
+    if (id == SignalId::IOS_DEBUGGER_SYSCTL) return SignalSpec{SignalId::IOS_DEBUGGER_SYSCTL, Severity::LOW, 0.0};
+    if (id == SignalId::ANDROID_CHECK_MAPS || id == SignalId::ANDROID_CHECK_MOUNTS ||
+        id == SignalId::ANDROID_CHECK_SELINUX || id == SignalId::ANDROID_CHECK_ROOT_PATHS ||
+        id == SignalId::ANDROID_CHECK_PROPERTIES || id == SignalId::ANDROID_CHECK_DEBUGGER ||
+        id == SignalId::ANDROID_CHECK_RUNTIME || id == SignalId::IOS_CHECK_JAILBREAK ||
+        id == SignalId::IOS_CHECK_DYLD || id == SignalId::IOS_CHECK_DEBUGGER) {
+      return SignalSpec{id, Severity::LOW, 0.0};
+    }
     return std::nullopt;
   }
 

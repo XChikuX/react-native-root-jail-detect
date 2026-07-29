@@ -3,10 +3,9 @@
 ///
 /// Shared C++ implementation of the `RootJailDetect` HybridObject.
 ///
-/// PR 1 (Nitro skeleton) shipped an empty stub. PR 2 adds the Android scored
-/// baseline (PLAN.md Phase 1): `/proc` parsing, SELinux, root-manager paths,
-/// build properties, and `TracerPid` as informational. iOS Phase 1 checks and
-/// the real `SecurityWatchdog` background thread land in PR 3.
+/// The implementation owns resolved configuration and delegates each platform
+/// pass to focused helpers. The watchdog reuses the same assessment entry point
+/// so its compromise decision cannot diverge from `checkDetailed()`.
 ///
 /// The HybridObject itself stays orchestration-only: it resolves config,
 /// measures the total time budget, delegates platform work to focused helper
@@ -15,7 +14,10 @@
 
 #pragma once
 
+#include "DeviceRiskAssessment.hpp"
 #include "HybridRootJailDetectSpec.hpp"
+
+#include <memory>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -39,14 +41,7 @@ namespace margelo::nitro::rootjaildetect {
     size_t getMemorySize() override;
 
   private:
-    // Resolved configuration. Stored as plain values; `undefined` options
-    // passed to `configure()` keep the previous value. Defaults match the
-    // public `RootJailDetectOptions` JSDoc.
-    double _minScore = 40.0;
-    double _timeoutMs = 400.0;
-    bool _includeEvidence = false;
-    bool _treatDebuggerAsCompromise = false;
-    bool _enablePlayIntegrity = false;
+    std::shared_ptr<RootJailDetectConfiguration> _configuration;
 
     // The watchdog is created lazily on first `getWatchdog()` call and shared
     // across subsequent calls so JS always observes one lifecycle owner.

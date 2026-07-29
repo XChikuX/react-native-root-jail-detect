@@ -56,13 +56,42 @@ namespace margelo::nitro::rootjaildetect {
     inline constexpr std::string_view ANDROID_BUILD_TEST_KEYS = "android.build.test_keys";
     /// Hidden overlay/bind-mount content surfaced through namespace comparison.
     inline constexpr std::string_view ANDROID_MOUNT_OVERLAY = "android.mount.overlay";
+    /// Frida or other instrumentation artifact in the process command line.
+    inline constexpr std::string_view ANDROID_CMDLINE_INSTRUMENTATION = "android.cmdline.instrumentation";
+    /// Local instrumentation socket exposed by the current process namespace.
+    inline constexpr std::string_view ANDROID_SOCKET_INSTRUMENTATION = "android.socket.instrumentation";
 
     // ---- Android: informational ----
     /// `TracerPid` in `/proc/self/status` is nonzero.
     inline constexpr std::string_view ANDROID_DEBUGGER_TRACERPID = "android.debugger.tracerpid";
 
-    // ---- iOS (reserved; land in PR 3) ----
+    // ---- Check availability (informational) ----
+    /// The maps-based runtime scan could not complete within the time budget.
+    inline constexpr std::string_view ANDROID_CHECK_MAPS = "android.check.maps";
+    /// The mount metadata scan could not complete within the time budget.
+    inline constexpr std::string_view ANDROID_CHECK_MOUNTS = "android.check.mounts";
+    /// The SELinux state check could not complete within the time budget.
+    inline constexpr std::string_view ANDROID_CHECK_SELINUX = "android.check.selinux";
+    /// The root path probe could not complete within the time budget.
+    inline constexpr std::string_view ANDROID_CHECK_ROOT_PATHS = "android.check.root_paths";
+    /// The Android property probe could not complete within the time budget.
+    inline constexpr std::string_view ANDROID_CHECK_PROPERTIES = "android.check.properties";
+    /// The debugger state check could not complete within the time budget.
+    inline constexpr std::string_view ANDROID_CHECK_DEBUGGER = "android.check.debugger";
+    /// The runtime instrumentation probe could not complete within the time budget.
+    inline constexpr std::string_view ANDROID_CHECK_RUNTIME = "android.check.runtime";
+    /// The jailbreak artifact probe could not complete within the time budget.
+    inline constexpr std::string_view IOS_CHECK_JAILBREAK = "ios.check.jailbreak";
+    /// The dyld image scan could not complete within the time budget.
+    inline constexpr std::string_view IOS_CHECK_DYLD = "ios.check.dyld";
+    /// The iOS debugger check could not complete within the time budget.
+    inline constexpr std::string_view IOS_CHECK_DEBUGGER = "ios.check.debugger";
+
+    // ---- iOS ----
     inline constexpr std::string_view IOS_SIMULATOR = "ios.simulator";
+    inline constexpr std::string_view IOS_JAILBREAK_ARTIFACT = "ios.jailbreak.artifact";
+    inline constexpr std::string_view IOS_DYLD_HOOK = "ios.dyld.hook";
+    inline constexpr std::string_view IOS_DEBUGGER_SYSCTL = "ios.debugger.sysctl";
   } // namespace SignalId
 
   /// Default weight and severity for a signal id. The weight is the value this

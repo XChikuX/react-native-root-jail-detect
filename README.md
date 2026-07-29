@@ -152,7 +152,7 @@ duplicate detection logic.
 | Mode | Behavior |
 | --- | --- |
 | `LOG_ONLY` | Logs detection events. Safe for testing. |
-| `THROW_EXCEPTION` | Throws a runtime exception when the threshold is exceeded. |
+| `THROW_EXCEPTION` | Logs the event from the native background worker; JavaScript exceptions cannot safely cross that thread boundary. |
 | `TERMINATE` | Terminates the application. **Destructive — do not use in tests.** |
 
 ### Result types
@@ -203,12 +203,17 @@ score weight.
 | low | `android.su.binary` | 10 | `su` binary at a conventional location |
 | low | `android.build.test_keys` | 10 | `ro.build.tags` reports `test-keys` |
 | low | `android.mount.overlay` | 10 | Hidden overlay/bind-mount content |
+| high | `android.cmdline.instrumentation` | 30 | Runtime instrumentation token in command line |
+| high | `android.socket.instrumentation` | 30 | Runtime instrumentation token in local sockets |
 | informational | `android.debugger.tracerpid` | 0 | `TracerPid` nonzero (diagnostic; see below) |
+| medium | `ios.simulator` | 20 | iOS simulator process |
+| medium | `ios.jailbreak.artifact` | 20 | Conservative known jailbreak artifact |
+| high | `ios.dyld.hook` | 30 | Suspicious runtime hook image |
+| informational | `ios.debugger.sysctl` | 0 | iOS debugger state (diagnostic) |
 
 > **Debugger semantics:** `debuggerDetected` is reported separately and does
 > **not** affect `compromised` by default. Set `treatDebuggerAsCompromise: true`
-> in `configure()` to fold it into the compromise decision. iOS signals
-> (`ios.simulator` and others) land in PR 3.
+> in `configure()` to fold it into the compromise decision.
 
 `compromised` is true when the aggregated score meets the configured `minScore`,
 or when the caller opts the debugger flag into the decision.
@@ -242,12 +247,13 @@ bun run example android   # or: bun run example ios
 enforcement state, root-manager directory and `su` binary probes, build-tag and
 verified-boot properties, and `TracerPid` as an informational debugger signal.
 
-**iOS (PR 3, in progress):** sandbox-boundary probes, `_dyld` loaded-image
-inspection, URL-scheme checks, and `sysctl` debugger state.
+**iOS:** simulator state, conservative jailbreak artifact probes, loaded-image
+inspection, and `sysctl` debugger state. Debugger state remains diagnostic by
+default, including Xcode-attached development builds.
 
-**Play Integrity (future):** optional client-side token acquisition behind
-`enablePlayIntegrity`; the token must be verified by your backend with Google
-and bound to a short-lived server-issued decision.
+**Play Integrity:** configure the provider in the host app, request a token with
+a server-issued nonce, and verify it directly with Google on your backend. The
+local score is not an integrity verdict.
 
 ---
 
@@ -264,6 +270,10 @@ and bound to a short-lived server-issued decision.
   Tune `minScore` and review `signals` before blocking users.
 - **Heuristics evolve.** Root frameworks update their hiding techniques; keep
   the library updated and contribute observed signals to the device matrix.
+
+See [`docs/DETECTION.md`](docs/DETECTION.md),
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md), and [`docs/EXPO.md`](docs/EXPO.md)
+for signal policy, backend integration guidance, and Expo setup.
 
 ---
 

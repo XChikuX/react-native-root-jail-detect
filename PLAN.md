@@ -304,7 +304,7 @@ Validate every release on:
 - iOS debugger/jailbreak separation
 - Watchdog reimplemented as a HybridObject over the scoring path
 - Tests, sample app, and detection documentation
-- Published as `2.0.0` with a migration guide (New Architecture required, no API renames)
+- Published as `0.2.0` with a migration guide (New Architecture required, no API renames)
 
 ### Milestone 2: Expo-ready package
 

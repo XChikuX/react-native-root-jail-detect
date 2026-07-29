@@ -18,8 +18,11 @@ namespace margelo::nitro::rootjaildetect {
     // Canonical `/proc` and `/sys` paths probed by the Android baseline.
     constexpr std::string_view K_PROC_MAPS = "/proc/self/maps";
     constexpr std::string_view K_PROC_MOUNTINFO = "/proc/self/mountinfo";
+    constexpr std::string_view K_INIT_MOUNTINFO = "/proc/1/mountinfo";
     constexpr std::string_view K_PROC_MOUNTS = "/proc/self/mounts";
     constexpr std::string_view K_PROC_STATUS = "/proc/self/status";
+    constexpr std::string_view K_PROC_CMDLINE = "/proc/self/cmdline";
+    constexpr std::string_view K_PROC_NET_UNIX = "/proc/net/unix";
     constexpr std::string_view K_SELINUX_ENFORCE = "/sys/fs/selinux/enforce";
 
     // Build a `DetectionSignal` from a parser/probe finding, applying the
@@ -50,6 +53,14 @@ namespace margelo::nitro::rootjaildetect {
       );
     }
 
+    DetectionSignal unavailableSignal(std::string_view id) noexcept {
+      return DetectionSignal(std::string(id), Severity::LOW, 0.0, std::nullopt, true);
+    }
+
+    bool expired(std::chrono::steady_clock::time_point deadline) noexcept {
+      return std::chrono::steady_clock::now() >= deadline;
+    }
+
     // Append findings as signals. `available=false` is not used here because
     // each detector only emits a finding when it actually matched something.
     void appendFindings(std::vector<DetectionSignal>& signals,
@@ -61,27 +72,50 @@ namespace margelo::nitro::rootjaildetect {
 
   } // namespace
 
-  AndroidCheckResult runAndroidChecks(bool includeEvidence) noexcept {
+  AndroidCheckResult runAndroidChecks(bool includeEvidence,
+                                      std::chrono::steady_clock::time_point deadline) noexcept {
     AndroidCheckResult result;
 
     // ---- Memory maps: Zygisk / LSPosed / Frida / Riru ----------------------
-    if (auto maps = readFileIfExists(K_PROC_MAPS)) {
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MAPS));
+      result.partial = true;
+    } else if (auto maps = readFileIfExists(K_PROC_MAPS)) {
       appendFindings(result.signals, scanMapsForHooks(*maps), includeEvidence);
+    } else {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MAPS));
     }
 
     // ---- Mount metadata: Magisk / KSU / APatch overlays --------------------
-    std::optional<std::string> mountinfo = readFileIfExists(K_PROC_MOUNTINFO);
-    std::optional<std::string> mounts = readFileIfExists(K_PROC_MOUNTS);
-    if (mountinfo.has_value() || mounts.has_value()) {
-      appendFindings(
-        result.signals,
-        scanMountsForRootArtifacts(mountinfo.value_or(""), mounts.value_or("")),
-        includeEvidence
-      );
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MOUNTS));
+      result.partial = true;
+    } else {
+      std::optional<std::string> mountinfo = readFileIfExists(K_PROC_MOUNTINFO);
+      std::optional<std::string> mounts = readFileIfExists(K_PROC_MOUNTS);
+      if (!mountinfo.has_value() && !mounts.has_value()) {
+        result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MOUNTS));
+      } else {
+        appendFindings(
+          result.signals,
+          scanMountsForRootArtifacts(mountinfo.value_or(""), mounts.value_or("")),
+          includeEvidence
+        );
+        if (mountinfo.has_value()) {
+          if (auto initMountinfo = readFileIfExists(K_INIT_MOUNTINFO)) {
+            appendFindings(result.signals,
+                           scanNamespaceOnlyMountArtifacts(*mountinfo, *initMountinfo),
+                           includeEvidence);
+          }
+        }
+      }
     }
 
     // ---- SELinux enforcement state -----------------------------------------
-    if (auto enforce = readFileIfExists(K_SELINUX_ENFORCE)) {
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_SELINUX));
+      result.partial = true;
+    } else if (auto enforce = readFileIfExists(K_SELINUX_ENFORCE)) {
       std::optional<bool> enforcing = parseSelinuxEnforce(*enforce);
       if (enforcing.has_value() && !enforcing.value()) {
         // Permissive/disabled SELinux on what should be a production device.
@@ -89,16 +123,31 @@ namespace margelo::nitro::rootjaildetect {
           buildSignal(SignalId::ANDROID_SELINUX_PERMISSIVE, "selinux=enforce:0", includeEvidence)
         );
       }
+    } else {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_SELINUX));
     }
 
     // ---- Root-manager paths and `su` binaries ------------------------------
-    appendFindings(result.signals, probeRootPaths(), includeEvidence);
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_ROOT_PATHS));
+      result.partial = true;
+    } else {
+      appendFindings(result.signals, probeRootPaths(), includeEvidence);
+    }
 
     // ---- Build / verified-boot properties ----------------------------------
-    appendFindings(result.signals, probeBuildProperties(), includeEvidence);
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_PROPERTIES));
+      result.partial = true;
+    } else {
+      appendFindings(result.signals, probeBuildProperties(), includeEvidence);
+    }
 
     // ---- Debugger: TracerPid (informational) -------------------------------
-    if (auto status = readFileIfExists(K_PROC_STATUS)) {
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_DEBUGGER));
+      result.partial = true;
+    } else if (auto status = readFileIfExists(K_PROC_STATUS)) {
       std::optional<int> tracerPid = parseTracerPid(*status);
       if (tracerPid.has_value() && tracerPid.value() != 0) {
         // Reported on `debuggerDetected` and as a zero-weight signal so the
@@ -109,6 +158,33 @@ namespace margelo::nitro::rootjaildetect {
           buildSignal(SignalId::ANDROID_DEBUGGER_TRACERPID,
                       "TracerPid!=0", includeEvidence)
         );
+      }
+    } else {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_DEBUGGER));
+    }
+
+    // ---- Runtime instrumentation: current command line and local sockets ---
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_RUNTIME));
+      result.partial = true;
+    } else {
+      bool available = false;
+      if (auto cmdline = readFileIfExists(K_PROC_CMDLINE)) {
+        available = true;
+        if (cmdline->find("frida") != std::string::npos) {
+          result.signals.push_back(buildSignal(
+            SignalId::ANDROID_CMDLINE_INSTRUMENTATION, "frida-command-line", includeEvidence));
+        }
+      }
+      if (auto unixSockets = readFileIfExists(K_PROC_NET_UNIX)) {
+        available = true;
+        if (unixSockets->find("frida") != std::string::npos) {
+          result.signals.push_back(buildSignal(
+            SignalId::ANDROID_SOCKET_INSTRUMENTATION, "frida-local-socket", includeEvidence));
+        }
+      }
+      if (!available) {
+        result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_RUNTIME));
       }
     }
 

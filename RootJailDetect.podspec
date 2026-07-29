@@ -13,11 +13,8 @@ Pod::Spec.new do |s|
 
   s.platforms    = { :ios => min_ios_version_supported }
 
-  # Hand-written iOS edge HybridObjects (Swift). Currently empty for the PR 1
-  # Nitro skeleton; PR 3 adds sandbox, dyld, URL-scheme, and debugger checks as
-  # Swift edge HybridObjects that the shared C++ core calls through their
-  # generated spec API. Shared C++ implementations live in cpp/ and are also
-  # compiled into this pod so iOS and Android share one detection core.
+  # Shared C++ implementations include conservative iOS sandbox, dyld, and
+  # debugger probes alongside the Android detection core.
   s.source_files = [
     "ios/**/*.{h,m,mm,swift}",
     "cpp/**/*.{hpp,cpp}",

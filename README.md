@@ -51,7 +51,7 @@ or
 bun add @psync/anti-jailbreak react-native-nitro-modules
 ```
 
-`react-native-nitro-modules` is a required peer dependency.
+`react-native-nitro-modules` >=35.0.0 is a required peer dependency.
 
 ### iOS
 

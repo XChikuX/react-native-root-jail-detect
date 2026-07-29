@@ -23,7 +23,7 @@ Use the versions and package manager committed to the repository:
 - React: `19.2.0`
 - TypeScript: `5.9.x` strict mode (TypeScript 7+ removed `noImplicitUseStrict` / `noStrictGenericChecks`; do not reintroduce them)
 - ESLint: `10.x`, native flat config in `eslint.config.mjs` (do not reintroduce the legacy `FlatCompat` wrapper around `@react-native/eslint-config` — it uses ESLint internals removed in v10)
-- Jest: `30.x` with a `package.json` `overrides` entry pinning `jest-environment-node` to `^30.4.0` so the stale `29.x` copy nested inside `react-native` is not installed
+- Jest: `30.x`. The Jest config in `package.json` overrides `testEnvironment` to `jest/environment.js`, which re-exports the top-level `jest-environment-node` (v30). Do **not** add a `package.json` `overrides` entry for `jest-environment-node` — npm 11 rejects it as a direct-dependency conflict, which breaks `npm publish` and CI. The `jest/environment.js` shim is the only workaround that satisfies both Bun and npm.
 - Nitro Modules: `react-native-nitro-modules` + `nitrogen` codegen (currently `0.36.x`)
 - Android: Kotlin `2.0.21`, min SDK 24, compile/target SDK 36, JDK 17 in CI, NDK 27+
 - iOS: minimum version supplied by React Native's `min_ios_version_supported`, Xcode 16.4+, Swift 5.9+, C++20

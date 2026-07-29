@@ -80,7 +80,8 @@
       "<rootDir>/example/node_modules",
       "<rootDir>/lib/"
     ],
-    "preset": "react-native"
+    "preset": "react-native",
+    "testEnvironment": "<rootDir>/jest/environment.js"
   },
   "keywords": [
     "react-native",
@@ -122,9 +123,6 @@
     "react": "*",
     "react-native": "*",
     "react-native-nitro-modules": ">=0.35.0"
-  },
-  "overrides": {
-    "jest-environment-node": "^30.4.0"
   },
   "prettier": {
     "quoteProps": "consistent",

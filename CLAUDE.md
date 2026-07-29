@@ -21,7 +21,9 @@ Use the versions and package manager committed to the repository:
 - Bun: `1.x` from `packageManager`
 - React Native: `0.83.0` (New Architecture only)
 - React: `19.2.0`
-- TypeScript: `5.9.x`, strict mode
+- TypeScript: `5.9.x` strict mode (TypeScript 7+ removed `noImplicitUseStrict` / `noStrictGenericChecks`; do not reintroduce them)
+- ESLint: `10.x`, native flat config in `eslint.config.mjs` (do not reintroduce the legacy `FlatCompat` wrapper around `@react-native/eslint-config` — it uses ESLint internals removed in v10)
+- Jest: `30.x` with a `package.json` `overrides` entry pinning `jest-environment-node` to `^30.4.0` so the stale `29.x` copy nested inside `react-native` is not installed
 - Nitro Modules: `react-native-nitro-modules` + `nitrogen` codegen (currently `0.36.x`)
 - Android: Kotlin `2.0.21`, min SDK 24, compile/target SDK 36, JDK 17 in CI, NDK 27+
 - iOS: minimum version supplied by React Native's `min_ios_version_supported`, Xcode 16.4+, Swift 5.9+, C++20
@@ -104,7 +106,7 @@ Consumer
 
 `checkDetailed()` is the primary, structured API and returns a `DeviceRiskResult` (score, signals, confidence, debugger state, partial flag). The legacy boolean wrappers are derived from it so all detection logic lives in one place.
 
-**Implementation status (post-PR 2):** the Android scored baseline (PLAN.md Phase 1) is implemented in shared C++ — `/proc/self/maps`, `/proc/self/mountinfo` + `/proc/self/mounts`, `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties, and `TracerPid` as informational. iOS Phase 1 checks and the real watchdog background thread land in PR 3. The PR 2 Android C++ baseline is **not yet native-build-validated** — a Gradle build with the NDK must be run on macOS/Linux/WSL before merging, as the C++ cannot be compiled on a Windows host.
+**Implementation status (post-PR 2):** the Android scored baseline (PLAN.md Phase 1) is implemented in shared C++ — `/proc/self/maps`, `/proc/self/mountinfo` + `/proc/self/mounts`, `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties, and `TracerPid` as informational. iOS Phase 1 checks and the real watchdog background thread land in PR 3. The C++ is not Windows-compilable — a Gradle build with the NDK must be run on macOS/Linux/WSL for native validation before publishing.
 
 `isDeviceCompromised()` resolves to `result.compromised` (score >= configured `minScore`). It is intentionally broader than literal root/jailbreak detection — on both platforms it also includes selected Frida, hook, and low-level anti-debug/injection checks. Do not narrow or broaden this semantic accidentally; update documentation and both platforms when changing it.
 

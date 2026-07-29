@@ -11,6 +11,8 @@
 #include "DeviceRiskResult.hpp"
 
 #include <mutex>
+#include <string>
+#include <vector>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -20,6 +22,8 @@ namespace margelo::nitro::rootjaildetect {
     bool includeEvidence = false;
     bool treatDebuggerAsCompromise = false;
     bool enablePlayIntegrity = false;
+    std::vector<std::string> urlSchemes = {"cydia", "sileo", "zbra", "filza"};
+    bool urlSchemesPerSignal = false;
   };
 
   struct RootJailDetectConfiguration final {

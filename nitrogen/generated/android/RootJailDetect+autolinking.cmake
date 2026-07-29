@@ -35,6 +35,7 @@ target_sources(
   # Shared Nitrogen C++ sources
   ../nitrogen/generated/shared/c++/HybridRootJailDetectSpec.cpp
   ../nitrogen/generated/shared/c++/HybridSecurityWatchdogSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridUrlSchemeProbeSpec.cpp
   # Android-specific Nitrogen C++ sources
   
 )

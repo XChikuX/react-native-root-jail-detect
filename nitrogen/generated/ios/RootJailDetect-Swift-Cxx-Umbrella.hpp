@@ -8,10 +8,16 @@
 #pragma once
 
 // Forward declarations of C++ defined types
-
+// Forward declaration of `HybridUrlSchemeProbeSpec` to properly resolve imports.
+namespace margelo::nitro::rootjaildetect { class HybridUrlSchemeProbeSpec; }
 
 // Include C++ defined types
-
+#include "HybridUrlSchemeProbeSpec.hpp"
+#include <NitroModules/Result.hpp>
+#include <exception>
+#include <memory>
+#include <string>
+#include <vector>
 
 // C++ helpers for Swift
 #include "RootJailDetect-Swift-Cxx-Bridge.hpp"
@@ -23,7 +29,8 @@
 #include <NitroModules/DateToChronoDate.hpp>
 
 // Forward declarations of Swift defined types
-
+// Forward declaration of `HybridUrlSchemeProbeSpec_cxx` to properly resolve imports.
+namespace RootJailDetect { class HybridUrlSchemeProbeSpec_cxx; }
 
 // Include Swift defined types
 #if __has_include("RootJailDetect-Swift.h")

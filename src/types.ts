@@ -16,4 +16,5 @@ export type {
   RootJailDetectOptions,
   SecurityWatchdogOptions,
   Severity,
+  UrlSchemeOptions,
 } from './specs';

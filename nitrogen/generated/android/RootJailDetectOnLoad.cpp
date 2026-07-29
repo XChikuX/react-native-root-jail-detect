@@ -17,6 +17,7 @@
 
 #include "HybridRootJailDetect.hpp"
 #include "HybridSecurityWatchdog.hpp"
+#include "HybridUrlSchemeProbe.hpp"
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -52,6 +53,15 @@ void registerAllNatives() {
                     "The HybridObject \"HybridSecurityWatchdog\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridSecurityWatchdog>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "UrlSchemeProbe",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridUrlSchemeProbe>,
+                    "The HybridObject \"HybridUrlSchemeProbe\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridUrlSchemeProbe>();
     }
   );
 }

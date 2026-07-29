@@ -20,6 +20,16 @@
         "language": "c++",
         "implementationClassName": "HybridSecurityWatchdog"
       }
+    },
+    "UrlSchemeProbe": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridUrlSchemeProbe"
+      },
+      "android": {
+        "language": "c++",
+        "implementationClassName": "HybridUrlSchemeProbe"
+      }
     }
   },
   "ignorePaths": ["**/node_modules", "**/example", "**/lib"],

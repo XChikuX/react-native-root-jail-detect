@@ -44,13 +44,16 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::IOS_JAILBREAK_DOPAMINE) return SignalSpec{SignalId::IOS_JAILBREAK_DOPAMINE, Severity::MEDIUM, 20.0};
     if (id == SignalId::IOS_JAILBREAK_PALERA1N) return SignalSpec{SignalId::IOS_JAILBREAK_PALERA1N, Severity::MEDIUM, 20.0};
     if (id == SignalId::IOS_SIDeload_TROLLSTORE) return SignalSpec{SignalId::IOS_SIDeload_TROLLSTORE, Severity::MEDIUM, 15.0};
+    if (id == SignalId::IOS_URLSCHEME_JAILBREAK_STORE) return SignalSpec{SignalId::IOS_URLSCHEME_JAILBREAK_STORE, Severity::MEDIUM, 15.0};
     if (id == SignalId::IOS_SIMULATOR) return SignalSpec{SignalId::IOS_SIMULATOR, Severity::MEDIUM, 20.0};
+    if (id == SignalId::IOS_CHECK_URLSCHEME) return SignalSpec{SignalId::IOS_CHECK_URLSCHEME, Severity::LOW, 0.0};
     if (id == SignalId::IOS_DEBUGGER_SYSCTL) return SignalSpec{SignalId::IOS_DEBUGGER_SYSCTL, Severity::LOW, 0.0};
     if (id == SignalId::ANDROID_CHECK_MAPS || id == SignalId::ANDROID_CHECK_MOUNTS ||
         id == SignalId::ANDROID_CHECK_SELINUX || id == SignalId::ANDROID_CHECK_ROOT_PATHS ||
         id == SignalId::ANDROID_CHECK_PROPERTIES || id == SignalId::ANDROID_CHECK_DEBUGGER ||
         id == SignalId::ANDROID_CHECK_RUNTIME || id == SignalId::IOS_CHECK_JAILBREAK ||
-        id == SignalId::IOS_CHECK_DYLD || id == SignalId::IOS_CHECK_DEBUGGER) {
+        id == SignalId::IOS_CHECK_DYLD || id == SignalId::IOS_CHECK_DEBUGGER ||
+        id == SignalId::IOS_CHECK_URLSCHEME) {
       return SignalSpec{id, Severity::LOW, 0.0};
     }
     return std::nullopt;

@@ -15,3 +15,5 @@ export type { RootJailDetectOptions } from './RootJailDetectOptions';
 export type { SecurityWatchdog } from './SecurityWatchdog.nitro';
 export type { SecurityWatchdogOptions } from './SecurityWatchdogOptions';
 export type { Severity } from './Severity';
+export type { UrlSchemeOptions } from './UrlSchemeOptions';
+export type { UrlSchemeProbe } from './UrlSchemeProbe.nitro';

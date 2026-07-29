@@ -28,9 +28,11 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-
+// Forward declaration of `UrlSchemeOptions` to properly resolve imports.
+namespace margelo::nitro::rootjaildetect { struct UrlSchemeOptions; }
 
 #include <optional>
+#include "UrlSchemeOptions.hpp"
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -44,10 +46,11 @@ namespace margelo::nitro::rootjaildetect {
     std::optional<bool> includeEvidence     SWIFT_PRIVATE;
     std::optional<bool> treatDebuggerAsCompromise     SWIFT_PRIVATE;
     std::optional<bool> enablePlayIntegrity     SWIFT_PRIVATE;
+    std::optional<UrlSchemeOptions> urlSchemes     SWIFT_PRIVATE;
 
   public:
     RootJailDetectOptions() = default;
-    explicit RootJailDetectOptions(std::optional<double> minScore, std::optional<double> timeoutMs, std::optional<bool> includeEvidence, std::optional<bool> treatDebuggerAsCompromise, std::optional<bool> enablePlayIntegrity): minScore(minScore), timeoutMs(timeoutMs), includeEvidence(includeEvidence), treatDebuggerAsCompromise(treatDebuggerAsCompromise), enablePlayIntegrity(enablePlayIntegrity) {}
+    explicit RootJailDetectOptions(std::optional<double> minScore, std::optional<double> timeoutMs, std::optional<bool> includeEvidence, std::optional<bool> treatDebuggerAsCompromise, std::optional<bool> enablePlayIntegrity, std::optional<UrlSchemeOptions> urlSchemes): minScore(minScore), timeoutMs(timeoutMs), includeEvidence(includeEvidence), treatDebuggerAsCompromise(treatDebuggerAsCompromise), enablePlayIntegrity(enablePlayIntegrity), urlSchemes(urlSchemes) {}
 
   public:
     friend bool operator==(const RootJailDetectOptions& lhs, const RootJailDetectOptions& rhs) = default;
@@ -67,7 +70,8 @@ namespace margelo::nitro {
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "timeoutMs"))),
         JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "includeEvidence"))),
         JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "treatDebuggerAsCompromise"))),
-        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "enablePlayIntegrity")))
+        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "enablePlayIntegrity"))),
+        JSIConverter<std::optional<margelo::nitro::rootjaildetect::UrlSchemeOptions>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "urlSchemes")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::rootjaildetect::RootJailDetectOptions& arg) {
@@ -77,6 +81,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "includeEvidence"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.includeEvidence));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "treatDebuggerAsCompromise"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.treatDebuggerAsCompromise));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "enablePlayIntegrity"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.enablePlayIntegrity));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "urlSchemes"), JSIConverter<std::optional<margelo::nitro::rootjaildetect::UrlSchemeOptions>>::toJSI(runtime, arg.urlSchemes));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -92,6 +97,7 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "includeEvidence")))) return false;
       if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "treatDebuggerAsCompromise")))) return false;
       if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "enablePlayIntegrity")))) return false;
+      if (!JSIConverter<std::optional<margelo::nitro::rootjaildetect::UrlSchemeOptions>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "urlSchemes")))) return false;
       return true;
     }
   };

@@ -32,7 +32,12 @@ namespace margelo::nitro::rootjaildetect {
     AndroidCheckResult nativeResult = runAndroidChecks(includeEvidence, deadline);
 #else
     Platform platform = Platform::IOS;
-    IOSCheckResult nativeResult = runIOSChecks(includeEvidence, deadline);
+    IOSCheckContext iosContext;
+    iosContext.includeEvidence = includeEvidence;
+    iosContext.deadline = deadline;
+    iosContext.urlSchemes = options.urlSchemes;
+    iosContext.urlSchemesPerSignal = options.urlSchemesPerSignal;
+    IOSCheckResult nativeResult = runIOSChecks(iosContext);
 #endif
 
     const auto endTime = std::chrono::steady_clock::now();

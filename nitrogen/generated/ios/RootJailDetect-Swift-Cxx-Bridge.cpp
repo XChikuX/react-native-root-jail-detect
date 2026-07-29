@@ -8,10 +8,26 @@
 #include "RootJailDetect-Swift-Cxx-Bridge.hpp"
 
 // Include C++ implementation defined types
-
+#include "HybridUrlSchemeProbeSpecSwift.hpp"
+#include "RootJailDetect-Swift-Cxx-Umbrella.hpp"
+#include <NitroModules/NitroDefines.hpp>
 
 namespace margelo::nitro::rootjaildetect::bridge::swift {
 
-  
+  // pragma MARK: std::shared_ptr<HybridUrlSchemeProbeSpec>
+  std::shared_ptr<HybridUrlSchemeProbeSpec> create_std__shared_ptr_HybridUrlSchemeProbeSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    RootJailDetect::HybridUrlSchemeProbeSpec_cxx swiftPart = RootJailDetect::HybridUrlSchemeProbeSpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::rootjaildetect::HybridUrlSchemeProbeSpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridUrlSchemeProbeSpec_(std__shared_ptr_HybridUrlSchemeProbeSpec_ cppType) {
+    std::shared_ptr<margelo::nitro::rootjaildetect::HybridUrlSchemeProbeSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::rootjaildetect::HybridUrlSchemeProbeSpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridUrlSchemeProbeSpec\" is not implemented in Swift!");
+    }
+    #endif
+    RootJailDetect::HybridUrlSchemeProbeSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
+  }
 
 } // namespace margelo::nitro::rootjaildetect::bridge::swift

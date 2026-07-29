@@ -7,11 +7,12 @@
 
 #import <Foundation/Foundation.h>
 #import <NitroModules/HybridObjectRegistry.hpp>
-
+#import "RootJailDetect-Swift-Cxx-Umbrella.hpp"
 #import <type_traits>
 
 #include "HybridRootJailDetect.hpp"
 #include "HybridSecurityWatchdog.hpp"
+#include "HybridUrlSchemeProbeSpecSwift.hpp"
 
 @interface RootJailDetectAutolinking : NSObject
 @end
@@ -38,6 +39,13 @@
                     "The HybridObject \"HybridSecurityWatchdog\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridSecurityWatchdog>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "UrlSchemeProbe",
+    []() -> std::shared_ptr<HybridObject> {
+      std::shared_ptr<HybridUrlSchemeProbeSpec> hybridObject = RootJailDetect::RootJailDetectAutolinking::createUrlSchemeProbe();
+      return hybridObject;
     }
   );
 }

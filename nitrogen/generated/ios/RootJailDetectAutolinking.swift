@@ -12,5 +12,15 @@ import NitroModules
 public final class RootJailDetectAutolinking {
   public typealias bridge = margelo.nitro.rootjaildetect.bridge.swift
 
+  public static func createUrlSchemeProbe() -> bridge.std__shared_ptr_HybridUrlSchemeProbeSpec_ {
+    let hybridObject = HybridUrlSchemeProbe()
+    return { () -> bridge.std__shared_ptr_HybridUrlSchemeProbeSpec_ in
+      let __cxxWrapped = hybridObject.getCxxWrapper()
+      return __cxxWrapped.getCxxPart()
+    }()
+  }
   
+  public static func isUrlSchemeProbeRecyclable() -> Bool {
+    return HybridUrlSchemeProbe.self is any RecyclableView.Type
+  }
 }

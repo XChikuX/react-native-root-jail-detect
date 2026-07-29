@@ -53,6 +53,7 @@ const signalReasons: Record<string, string> = {
   'ios.jailbreak.dopamine': 'A Dopamine-specific artifact is present.',
   'ios.jailbreak.palera1n': 'A palera1n-specific artifact is present.',
   'ios.sideload.trollstore': 'A TrollStore-related artifact is present (sideloading tool, not a full jailbreak).',
+  'ios.urlscheme.jailbreak_store': 'A jailbreak-store URL scheme responded to canOpenURL.',
   'ios.simulator': 'The app is running in the iOS simulator.',
 };
 

@@ -154,6 +154,7 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | medium | `ios.jailbreak.dopamine` | 20 | Dopamine-specific artifact present |
 | medium | `ios.jailbreak.palera1n` | 20 | palera1n-specific artifact present |
 | medium | `ios.sideload.trollstore` | 15 | TrollStore sideloading artifact present (not a jailbreak) |
+| medium | `ios.urlscheme.jailbreak_store` | 15 | Jailbreak-store URL scheme responded to `canOpenURL` |
 | medium | `ios.simulator` | 20 | iOS simulator environment |
 | informational | `ios.debugger.sysctl` | 0 | `sysctl` reports P_TRACED (diagnostic) |
 | low | `*.check.*` | 0 | Check timed out / unavailable (not compromise) |
@@ -166,6 +167,7 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 - **Legitimate custom ROMs & devs:** Unlocked bootloaders, `test-keys`, and permissive SELinux can occur on legitimate developer devices. Tune `minScore` appropriately.
 - **Rootless jailbreaks and TrollStore:** iOS rootless jailbreaks (Dopamine, palera1n) deliberately avoid classic paths and use `/var/jb` or `/private/preboot/...` prefixes. TrollStore is a sideloading tool, not a jailbreak, and is reported separately under `ios.sideload.trollstore`.
 - **Renamed Frida gadgets:** Memory-map and `_dyld` scans include common rename patterns (`libgadget`, `gadget.dylib`, etc.), but a determined attacker can rename further. Treat these as defensive signals, not proof.
+- **iOS URL schemes:** The default probe list (`cydia`, `sileo`, `zbra`, `filza`) respects the 50-entry `LSApplicationQueriesSchemes` cap shared with the host app. Configure `RootJailDetectOptions.urlSchemes.schemes` to change or disable the list. Undeclared schemes safely return `NO` and never produce a false positive.
 
 ---
 

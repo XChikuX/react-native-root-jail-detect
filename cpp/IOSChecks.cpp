@@ -3,8 +3,11 @@
 ///
 
 #include "IOSChecks.hpp"
+#include "HybridUrlSchemeProbe.hpp"
 #include "SignalCatalog.hpp"
 #include "TcpProbe.hpp"
+
+#include <NitroModules/HybridObjectRegistry.hpp>
 
 #include <chrono>
 #include <cstring>
@@ -63,21 +66,27 @@ namespace margelo::nitro::rootjaildetect {
 
   IOSCheckResult runIOSChecks(bool includeEvidence,
                               std::chrono::steady_clock::time_point deadline) noexcept {
+    IOSCheckContext context;
+    context.includeEvidence = includeEvidence;
+    context.deadline = deadline;
+    return runIOSChecks(context);
+  }
+
+  IOSCheckResult runIOSChecks(const IOSCheckContext& context) noexcept {
+    const bool includeEvidence = context.includeEvidence;
     IOSCheckResult result;
 #if defined(__APPLE__)
 #if TARGET_OS_SIMULATOR
     result.signals.push_back(buildSignal(SignalId::IOS_SIMULATOR, "ios-simulator", includeEvidence));
     return result;
 #else
+    const auto deadline = context.deadline;
     if (expired(deadline)) {
       result.partial = true;
       result.signals.push_back(unavailableSignal(SignalId::IOS_CHECK_JAILBREAK));
       return result;
     }
 
-    // Classic jailbreak artifacts. A single positive hit is sufficient
-    // because all of these map to the same signal id; we never want to
-    // count equivalent filesystem evidence twice.
     constexpr const char* kJailbreakPaths[] = {
       "/private/jb",
       "/var/jb",
@@ -205,7 +214,7 @@ namespace margelo::nitro::rootjaildetect {
       return result;
     }
 
-    int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()};
+    int mib[] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, static_cast<int>(getpid())};
     kinfo_proc process {};
     size_t size = sizeof(process);
     if (::sysctl(mib, 4, &process, &size, nullptr, 0) == 0 &&
@@ -228,6 +237,41 @@ namespace margelo::nitro::rootjaildetect {
         probeLocalTcpServices(kIOSProbes, sizeof(kIOSProbes) / sizeof(kIOSProbes[0]), deadline);
       for (const ProcFinding& finding : networkFindings) {
         result.signals.push_back(buildSignal(finding.signalId, finding.evidence, includeEvidence));
+      }
+    }
+
+    // ---- URL scheme checks --------------------------------------------------
+    if (expired(deadline)) {
+      result.partial = true;
+    } else if (!context.urlSchemes.empty()) {
+      std::shared_ptr<HybridUrlSchemeProbeSpec> probe = context.urlSchemeProbe;
+      if (!probe) {
+        try {
+          std::shared_ptr<margelo::nitro::HybridObject> object =
+            margelo::nitro::HybridObjectRegistry::createHybridObject("UrlSchemeProbe");
+          probe = std::dynamic_pointer_cast<HybridUrlSchemeProbeSpec>(object);
+        } catch (...) {
+          probe = nullptr;
+        }
+        if (!probe) {
+          // Fall back to the no-op stub so the runner can keep going.
+          probe = std::make_shared<HybridUrlSchemeProbe>();
+        }
+      }
+      try {
+        std::vector<std::string> responding = probe->checkSchemes(context.urlSchemes);
+        if (context.urlSchemesPerSignal) {
+          for (const std::string& scheme : responding) {
+            result.signals.push_back(buildSignal("ios.urlscheme." + scheme, scheme + "://", includeEvidence));
+          }
+        } else if (!responding.empty()) {
+          result.signals.push_back(buildSignal(SignalId::IOS_URLSCHEME_JAILBREAK_STORE,
+                                               "jailbreak-store-schemes", includeEvidence));
+        }
+      } catch (...) {
+        // `canOpenURL` can throw if a scheme is malformed or if UIKit is not
+        // yet ready. Treat failure as unavailable, never as a detection.
+        result.signals.push_back(unavailableSignal(SignalId::IOS_CHECK_URLSCHEME));
       }
     }
 #endif

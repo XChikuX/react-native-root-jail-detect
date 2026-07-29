@@ -124,8 +124,14 @@ namespace margelo::nitro::rootjaildetect {
     /// TrollStore persistence/helper presence. TrollStore is a sideloading tool,
     /// not a jailbreak — its detection is intentionally a separate signal.
     inline constexpr std::string_view IOS_SIDeload_TROLLSTORE = "ios.sideload.trollstore";
+    /// One or more jailbreak-store URL schemes responded to `canOpenURL`.
+    inline constexpr std::string_view IOS_URLSCHEME_JAILBREAK_STORE = "ios.urlscheme.jailbreak_store";
     /// The app is running in the iOS simulator.
     inline constexpr std::string_view IOS_SIMULATOR = "ios.simulator";
+
+    // ---- iOS availability ----
+    /// The URL-scheme check could not complete within the time budget.
+    inline constexpr std::string_view IOS_CHECK_URLSCHEME = "ios.check.urlscheme";
 
     // ---- iOS: informational ----
     /// `sysctl` reports P_TRACED for this process.

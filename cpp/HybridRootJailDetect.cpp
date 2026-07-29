@@ -43,6 +43,14 @@ namespace margelo::nitro::rootjaildetect {
     if (options.enablePlayIntegrity.has_value()) {
       _configuration->options.enablePlayIntegrity = options.enablePlayIntegrity.value();
     }
+    if (options.urlSchemes.has_value()) {
+      if (options.urlSchemes.value().schemes.has_value()) {
+        _configuration->options.urlSchemes = options.urlSchemes.value().schemes.value();
+      }
+      if (options.urlSchemes.value().perSchemeSignals.has_value()) {
+        _configuration->options.urlSchemesPerSignal = options.urlSchemes.value().perSchemeSignals.value();
+      }
+    }
   }
 
   std::shared_ptr<Promise<DeviceRiskResult>> HybridRootJailDetect::checkDetailed() {

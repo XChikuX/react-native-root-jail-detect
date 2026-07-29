@@ -1,3 +1,5 @@
+import type { UrlSchemeOptions } from './UrlSchemeOptions';
+
 /**
  * Configuration applied to subsequent calls to
  * {@linkcode RootJailDetect.checkDetailed} and to the {@linkcode SecurityWatchdog}.
@@ -54,4 +56,15 @@ export interface RootJailDetectOptions {
    * @platform android
    */
   enablePlayIntegrity?: boolean;
+  /**
+   * iOS URL-scheme probe configuration. See {@linkcode UrlSchemeOptions} for
+   * details on the 50-entry `LSApplicationQueriesSchemes` cap.
+   *
+   * Defaults to testing `cydia`, `sileo`, `zbra`, `filza`.
+   *
+   * @platform ios
+   */
+  urlSchemes?: UrlSchemeOptions;
 }
+
+export type { UrlSchemeOptions };

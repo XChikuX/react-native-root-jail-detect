@@ -46,6 +46,7 @@ namespace margelo::nitro::rootjaildetect {
     // The watchdog is created lazily on first `getWatchdog()` call and shared
     // across subsequent calls so JS always observes one lifecycle owner.
     std::shared_ptr<HybridSecurityWatchdogSpec> _watchdog;
+
   };
 
 } // namespace margelo::nitro::rootjaildetect

@@ -21,6 +21,10 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_EMULATOR) return SignalSpec{SignalId::ANDROID_EMULATOR, Severity::MEDIUM, 20.0};
     if (id == SignalId::ANDROID_SU_BINARY) return SignalSpec{SignalId::ANDROID_SU_BINARY, Severity::LOW, 10.0};
     if (id == SignalId::ANDROID_BUILD_TEST_KEYS) return SignalSpec{SignalId::ANDROID_BUILD_TEST_KEYS, Severity::LOW, 10.0};
+    // Low weight and high FP on legitimate dev builds; Shamiko hides these via resetprop.
+    if (id == SignalId::ANDROID_DEBUG_BUILD) return SignalSpec{SignalId::ANDROID_DEBUG_BUILD, Severity::LOW, 5.0};
+    if (id == SignalId::ANDROID_ADB_ROOT) return SignalSpec{SignalId::ANDROID_ADB_ROOT, Severity::LOW, 5.0};
+    if (id == SignalId::ANDROID_RO_SECURE_ZERO) return SignalSpec{SignalId::ANDROID_RO_SECURE_ZERO, Severity::LOW, 5.0};
     if (id == SignalId::ANDROID_MOUNT_OVERLAY) return SignalSpec{SignalId::ANDROID_MOUNT_OVERLAY, Severity::LOW, 10.0};
     if (id == SignalId::ANDROID_CMDLINE_INSTRUMENTATION) return SignalSpec{SignalId::ANDROID_CMDLINE_INSTRUMENTATION, Severity::HIGH, 30.0};
     if (id == SignalId::ANDROID_SOCKET_INSTRUMENTATION) return SignalSpec{SignalId::ANDROID_SOCKET_INSTRUMENTATION, Severity::HIGH, 30.0};

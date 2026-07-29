@@ -32,12 +32,16 @@ namespace margelo::nitro::rootjaildetect {
   /// found, suitable for redaction when `includeEvidence` is enabled.
   std::vector<ProcFinding> probeRootPaths() noexcept;
 
-  /// Read Android system properties that carry verified-boot and build signals:
-  ///   - `ro.build.tags` (`test-keys` -> low-severity build signal)
-  ///   - `ro.boot.verifiedbootstate` (`orange`/`unlocked` -> bootloader signal)
-  ///   - `ro.boot.flash.locked` (`0` -> bootloader signal)
-  ///
-  /// Returns one `ProcFinding` per signal that fired.
+/// Read Android system properties that carry verified-boot and build signals:
+///   - `ro.build.tags` (`test-keys` -> low-severity build signal)
+///   - `ro.boot.verifiedbootstate` (`orange`/`unlocked` -> bootloader signal)
+///   - `ro.boot.flash.locked` (`0` -> bootloader signal)
+///   - `ro.debuggable`, `service.adb.root`, `ro.secure` -> low-severity debug
+///     build signals (high false-positive on userdebug/eng devices; hidden by
+///     Shamiko). `ro.build.selinux` is intentionally NOT read because it is an
+///     unreliable SELinux indicator.
+///
+/// Returns one `ProcFinding` per signal that fired.
   std::vector<ProcFinding> probeBuildProperties() noexcept;
 
 } // namespace margelo::nitro::rootjaildetect

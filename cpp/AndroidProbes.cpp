@@ -183,6 +183,26 @@ namespace margelo::nitro::rootjaildetect {
         recordOnce(findings, seen, SignalId::ANDROID_BOOTLOADER_UNLOCKED, "ro.boot.flash.locked=0");
       }
     }
+
+    // Debug / insecure build properties. These are real but hidden by Shamiko
+    // and common on userdebug/eng devices. Emit low-weight signals with explicit
+    // caveats; never block on them alone. `ro.build.selinux` is intentionally
+    // NOT used because it is unreliable (can be 0 while enforcing, often empty).
+    std::string debuggable = readProperty("ro.debuggable");
+    if (!debuggable.empty() && debuggable != "0") {
+      recordOnce(findings, seen, SignalId::ANDROID_DEBUG_BUILD,
+                 "ro.debuggable=" + debuggable);
+    }
+    std::string adbRoot = readProperty("service.adb.root");
+    if (!adbRoot.empty() && adbRoot != "0") {
+      recordOnce(findings, seen, SignalId::ANDROID_ADB_ROOT,
+                 "service.adb.root=" + adbRoot);
+    }
+    std::string roSecure = readProperty("ro.secure");
+    if (!roSecure.empty() && roSecure == "0") {
+      recordOnce(findings, seen, SignalId::ANDROID_RO_SECURE_ZERO,
+                 "ro.secure=0");
+    }
 #endif
     return findings;
   }

@@ -54,6 +54,12 @@ namespace margelo::nitro::rootjaildetect {
     inline constexpr std::string_view ANDROID_SU_BINARY = "android.su.binary";
     /// `ro.build.tags` reports `test-keys`.
     inline constexpr std::string_view ANDROID_BUILD_TEST_KEYS = "android.build.test_keys";
+    /// `ro.debuggable` is set (userdebug/eng build or hidden by Shamiko).
+    inline constexpr std::string_view ANDROID_DEBUG_BUILD = "android.build.debuggable";
+    /// `service.adb.root` is set (development build or hidden by Shamiko).
+    inline constexpr std::string_view ANDROID_ADB_ROOT = "android.build.adb_root";
+    /// `ro.secure` is `0` (development build or hidden by Shamiko).
+    inline constexpr std::string_view ANDROID_RO_SECURE_ZERO = "android.build.ro_secure_zero";
     /// Hidden overlay/bind-mount content surfaced through namespace comparison.
     inline constexpr std::string_view ANDROID_MOUNT_OVERLAY = "android.mount.overlay";
 

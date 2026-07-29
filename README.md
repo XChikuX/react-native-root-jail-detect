@@ -8,7 +8,7 @@ A **React Native Nitro Module** that detects rooted (Android) and jailbroken
 instrumentation frameworks (Frida, Zygisk/LSPosed/Riru). It exposes a **scored,
 structured device-risk API** plus an optional periodic security watchdog.
 
-v2.0.0 is a ground-up rewrite on top of [Nitro Modules](https://nitro.margelo.com/).
+@psync/anti-jailbreak is a [Nitro Module](https://nitro.margelo.com/).
 It is **New Architecture only** — there is no Old-Architecture bridge fallback, no
 TurboModule spec, and no handwritten JNI/externs. The shared detection core is
 written in C++ and shared across iOS and Android; Swift and Kotlin are used only
@@ -48,7 +48,7 @@ npm install @psync/anti-jailbreak react-native-nitro-modules
 or
 
 ```sh
-yarn add @psync/anti-jailbreak react-native-nitro-modules
+bun add @psync/anti-jailbreak react-native-nitro-modules
 ```
 
 `react-native-nitro-modules` is a required peer dependency.
@@ -277,4 +277,4 @@ detection heuristics while implementing a scoped change.
 
 ## License
 
-MIT © PSync
+MIT © Psync

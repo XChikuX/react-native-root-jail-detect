@@ -158,16 +158,53 @@ namespace margelo::nitro::rootjaildetect {
 
   } // namespace
 
-  std::optional<std::string> readFileIfExists(std::string_view path) noexcept {
+  /**
+   * Read a file with a bounded deadline and optional size cap.
+   *
+   * Implementation constraints:
+   *   - The deadline is checked periodically while reading; a single read will
+   *     not be split, but the loop polls between chunks so a slow source cannot
+   *     stall the entire pass indefinitely.
+   *   - `maxBytes` limits how many bytes we will allocate/return. Excess bytes
+   *     beyond the cap are discarded and the partial content is returned.
+   *   - Any I/O failure is treated as "no data"; a missing/unreadable `/proc`
+   *     entry must never become evidence of compromise.
+   */
+  std::optional<std::string> readFileIfExists(std::string_view path,
+                                              std::chrono::steady_clock::time_point deadline,
+                                              size_t maxBytes) noexcept {
     try {
       std::ifstream stream(std::string(path), std::ios::binary);
       if (!stream.is_open()) {
         return std::nullopt;
       }
-      std::ostringstream buffer;
-      buffer << stream.rdbuf();
-      std::string contents = buffer.str();
-      if (stream.bad()) {
+
+      std::string contents;
+      contents.reserve(std::min(maxBytes, static_cast<size_t>(8192)));
+
+      constexpr size_t kChunkSize = 4096;
+      char chunk[kChunkSize];
+      bool deadlineExceeded = false;
+
+      while (stream.good() && contents.size() < maxBytes) {
+        // Poll the deadline between chunks so a pathologically slow file cannot
+        // burn the entire pass budget.
+        if (std::chrono::steady_clock::now() >= deadline) {
+          deadlineExceeded = true;
+          break;
+        }
+        stream.read(chunk, static_cast<std::streamsize>(std::min(
+                             kChunkSize, maxBytes - contents.size())));
+        const std::streamsize bytesRead = stream.gcount();
+        if (bytesRead > 0) {
+          contents.append(chunk, static_cast<size_t>(bytesRead));
+        }
+      }
+
+      if (stream.bad() && contents.empty()) {
+        return std::nullopt;
+      }
+      if (deadlineExceeded && contents.empty()) {
         return std::nullopt;
       }
       return contents;
@@ -176,6 +213,13 @@ namespace margelo::nitro::rootjaildetect {
       // entry must never become evidence of compromise.
       return std::nullopt;
     }
+  }
+
+  std::optional<std::string> readFileIfExists(std::string_view path) noexcept {
+    // Provide the legacy overload with "no deadline" and a generous size cap for
+    // callers that do not yet pass a deadline.
+    return readFileIfExists(path, std::chrono::steady_clock::time_point::max(),
+                            static_cast<size_t>(512 * 1024));
   }
 
   std::vector<ProcFinding> scanMapsForHooks(std::string_view mapsContent) noexcept {

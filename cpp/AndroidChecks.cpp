@@ -81,7 +81,7 @@ namespace margelo::nitro::rootjaildetect {
     if (expired(deadline)) {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MAPS));
       result.partial = true;
-    } else if (auto maps = readFileIfExists(K_PROC_MAPS)) {
+    } else if (auto maps = readFileIfExists(K_PROC_MAPS, deadline, 256 * 1024)) {
       appendFindings(result.signals, scanMapsForHooks(*maps), includeEvidence);
     } else {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MAPS));
@@ -92,8 +92,8 @@ namespace margelo::nitro::rootjaildetect {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MOUNTS));
       result.partial = true;
     } else {
-      std::optional<std::string> mountinfo = readFileIfExists(K_PROC_MOUNTINFO);
-      std::optional<std::string> mounts = readFileIfExists(K_PROC_MOUNTS);
+      std::optional<std::string> mountinfo = readFileIfExists(K_PROC_MOUNTINFO, deadline, 128 * 1024);
+      std::optional<std::string> mounts = readFileIfExists(K_PROC_MOUNTS, deadline, 128 * 1024);
       if (!mountinfo.has_value() && !mounts.has_value()) {
         result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MOUNTS));
       } else {
@@ -103,7 +103,7 @@ namespace margelo::nitro::rootjaildetect {
           includeEvidence
         );
         if (mountinfo.has_value()) {
-          if (auto initMountinfo = readFileIfExists(K_INIT_MOUNTINFO)) {
+          if (auto initMountinfo = readFileIfExists(K_INIT_MOUNTINFO, deadline, 128 * 1024)) {
             appendFindings(result.signals,
                            scanNamespaceOnlyMountArtifacts(*mountinfo, *initMountinfo),
                            includeEvidence);
@@ -116,7 +116,7 @@ namespace margelo::nitro::rootjaildetect {
     if (expired(deadline)) {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_SELINUX));
       result.partial = true;
-    } else if (auto enforce = readFileIfExists(K_SELINUX_ENFORCE)) {
+    } else if (auto enforce = readFileIfExists(K_SELINUX_ENFORCE, deadline, 16)) {
       std::optional<bool> enforcing = parseSelinuxEnforce(*enforce);
       if (enforcing.has_value() && !enforcing.value()) {
         // Permissive/disabled SELinux on what should be a production device.
@@ -148,7 +148,7 @@ namespace margelo::nitro::rootjaildetect {
     if (expired(deadline)) {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_DEBUGGER));
       result.partial = true;
-    } else if (auto status = readFileIfExists(K_PROC_STATUS)) {
+    } else if (auto status = readFileIfExists(K_PROC_STATUS, deadline, 8 * 1024)) {
       std::optional<int> tracerPid = parseTracerPid(*status);
       if (tracerPid.has_value() && tracerPid.value() != 0) {
         // Reported on `debuggerDetected` and as a zero-weight signal so the
@@ -170,14 +170,14 @@ namespace margelo::nitro::rootjaildetect {
       result.partial = true;
     } else {
       bool available = false;
-      if (auto cmdline = readFileIfExists(K_PROC_CMDLINE)) {
+      if (auto cmdline = readFileIfExists(K_PROC_CMDLINE, deadline, 4 * 1024)) {
         available = true;
         if (cmdline->find("frida") != std::string::npos) {
           result.signals.push_back(buildSignal(
             SignalId::ANDROID_CMDLINE_INSTRUMENTATION, "frida-command-line", includeEvidence));
         }
       }
-      if (auto unixSockets = readFileIfExists(K_PROC_NET_UNIX)) {
+      if (auto unixSockets = readFileIfExists(K_PROC_NET_UNIX, deadline, 128 * 1024)) {
         available = true;
         if (unixSockets->find("frida") != std::string::npos) {
           result.signals.push_back(buildSignal(

@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -33,8 +34,18 @@ namespace margelo::nitro::rootjaildetect {
 
   /// Read an entire file into a string. Returns `std::nullopt` if the file
   /// cannot be opened or read. Never throws — callers treat absence as "no
-  /// data", not as evidence of compromise.
+  /// data", not as evidence of compromise. The overload without a deadline
+  /// uses a generous default size cap for backwards compatibility.
   std::optional<std::string> readFileIfExists(std::string_view path) noexcept;
+
+  /// Read a file with a bounded deadline and size cap. The deadline is polled
+  /// between read chunks so a pathologically slow source cannot stall the
+  /// entire detection pass. Excess bytes beyond `maxBytes` are discarded.
+  std::optional<std::string> readFileIfExists(
+    std::string_view path,
+    std::chrono::steady_clock::time_point deadline,
+    size_t maxBytes
+  ) noexcept;
 
   /// Scan `/proc/self/maps` content for known Zygisk, LSPosed, Frida, and Riru
   /// library/path artifacts. Returns one finding per distinct signal id that

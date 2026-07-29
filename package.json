@@ -121,7 +121,7 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "react-native-nitro-modules": ">=0.36.0"
+    "react-native-nitro-modules": ">=0.35.0"
   },
   "overrides": {
     "jest-environment-node": "^30.4.0"

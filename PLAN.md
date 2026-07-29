@@ -6,7 +6,7 @@ Evolve `@psync/anti-jailbreak` from a path-based boolean checker into an Expo-co
 
 This is a **full Nitro migration targeting v2.0.0**: New Architecture only, one native bridge, no handwritten Objective-C externs, no TurboModule codegen spec. The existing TurboModule (`src/NativeRootJailDetect.ts`), iOS `RootJailDetect.m` externs, and generated `NativeRootJailDetectSpec` classes are removed.
 
-The package was previously published as `react-native-root-jail-detect`. Version 2.0.0 is published under the `@psync/anti-jailbreak` name.
+The package was previously published as `react-native-root-jail-detect`. Version 0.2.1 is published under the `@psync/anti-jailbreak` name.
 
 ## Scope and principles
 
@@ -142,17 +142,18 @@ Use weighted, independently generated signals. Cap the overall score at 100 and 
 | High | Zygisk/Magisk artifact in mount metadata | 35 | Strong local signal |
 | High | Zygisk, LSPosed, Frida, or Riru library mapped in process memory | 30 | Use exact and normalized pattern matching |
 | High | SELinux disabled/permissive on production device | 25 | OEM/debug exemptions must be documented |
-| High | Local debug/instrumentation TCP service responding | 30 | Loopback-only; short timeout; see Phase 5 |
+| High | Local debug/instrumentation TCP service responding | 30 | Loopback-only; short timeout; see Phase 4 |
 | Medium | Root manager/kernel-root data directory accessible | 20 | Multi-method native probes |
 | Medium | Boot verification unlocked or orange | 20 | Do not treat alone as root |
 | Medium | Integrity verdict fails server policy | 30 | Verify only on backend |
-| Medium | iOS URL scheme / rootless jailbreak artifact | 20 | Scheme presence is not proof alone |
+| Medium | iOS rootless jailbreak artifact (Dopamine/palera1n-class) | 20 | Validate on physical devices before raising |
+| Medium | iOS URL scheme presence (cydia/sileo/zbra/filza) | 15 | Scheme ≠ proof; 50-entry budget cap; see gap #5 |
 | Low | `su` executable/path found | 10 | Commonly hidden and easy to hook |
-| Low | `test-keys` build tag | 10 | Often legitimate on custom ROMs; whitelist path in Phase 6 |
-| Low | Hidden mount-namespace overlay content | 10 | See note below |
+| Low | `test-keys` build tag | 10 | Often legitimate on custom ROMs; whitelist path in Phase 4 |
+| Low | Hidden mount-namespace overlay content | 10 | See note below; current impl is dead code, see gap #10 |
 | Informational | Debugger/TracerPid | 0 by default | Separate signal from compromise |
 
-**Mount namespaces:** on modern Android, apps legitimately run in their own mount namespace, so a namespace *identity mismatch* (`/proc/1/ns/mnt` vs `/proc/self/ns/mnt`) is expected and must not be a signal by itself. The useful signal is specific hidden overlay/bind-mount *content* visible only through namespace comparison. Weight low until validated on the device matrix.
+**Mount namespaces:** on modern Android, apps legitimately run in their own mount namespace, so a namespace *identity mismatch* (`/proc/1/ns/mnt` vs `/proc/self/ns/mnt`) is expected and must not be a signal by itself. The current `scanNamespaceOnlyMountArtifacts` reads `/proc/1/mountinfo` for comparison, but **this file is unreadable by untrusted apps on stock Android** (PID 1 hides it via SELinux). The signal is effectively dead code in the current path; see gap #10 for the reshaped plan using `statx` and self-namespace diffs.
 
 `compromised` is true when the score meets `minScore`, or when server policy marks an integrity verdict as failed. The host app can choose a stricter or more permissive threshold.
 
@@ -222,14 +223,16 @@ Fundamentals are in place, but several modern evasion paths and hardening items 
 
 #### 1. Rootless iOS / modern jailbreak indicators — **open (P0)**
 
-Classic paths miss rootless jailbreaks (Dopamine, palera1n rootless, TrollStore-style installs) that avoid `/Applications/Cydia.app` and classic MobileSubstrate layouts. Many still leave:
+Classic paths miss rootless jailbreaks (Dopamine, palera1n rootless) that avoid `/Applications/Cydia.app` and classic MobileSubstrate layouts. As of 2025/2026, Dopamine supports iOS 15–16.6.1 natively with extensions to 17.0–18.7.1; palera1n supports A8–A11 on iOS 15–16.x+ (checkm8-based). Both are rootless by default. Many still leave:
 
 - Rootless prefix trees under `/var/jb`, `/private/preboot/...`, or bootstrap-specific paths beyond the current short list.
-- TrollStore / TrollStore Lite markers and related helper apps.
-- Injected or renamed hook libraries not covered by the current `_dyld` token list.
+- Dopamine bootstrap markers (`/var/jb/.installed_dopamine`, `/var/jb/usr/lib/TweakInject.dylib`).
+- Injected or renamed hook libraries not covered by the current `_dyld` token list (ellekit, rosalie, newer Substitute forks).
 - Entitlement / sandbox anomalies best probed from a narrow Swift edge if pure filesystem checks are insufficient.
 
-**Plan:** extend `cpp/IOSChecks.cpp` path and image lists with versioned, documented artifacts; add distinct signal ids (for example `ios.jailbreak.rootless`, `ios.jailbreak.trollstore`) rather than overloading `ios.jailbreak.artifact`. Keep weights medium until validated on physical devices. Do not treat a single missing classic path as clean.
+**Note on TrollStore:** TrollStore is **not a jailbreak** — it is a sideloading tool using a CoreTrust bypass ([The Apple Wiki](https://theapplewiki.com/wiki/TrollStore)). It does not provide full filesystem access and does not create jailbreak artifacts. As of 2025, TrollStore does **not** work on iOS 17.1+ or iOS 18+. If included, it should be a separate signal category (`ios.sideload.trollstore`) with appropriate weight, not grouped with rootless jailbreaks.
+
+**Plan:** extend `cpp/IOSChecks.cpp` path and image lists with versioned, documented artifacts; add distinct signal ids (for example `ios.jailbreak.rootless`, `ios.jailbreak.dopamine`, `ios.sideload.trollstore`) rather than overloading `ios.jailbreak.artifact`. Keep weights medium until validated on physical devices. Do not treat a single missing classic path as clean.
 
 #### 2. Frida / instrumentation renaming — **partial**
 
@@ -245,28 +248,34 @@ Android maps already match several Frida-related tokens (`frida`, `frida-agent`,
 
 No loopback TCP probes exist today. Compromised devices often expose:
 
-| Port | Typical service | Suggested signal id |
-|---:|---|---|
-| 22 / 44 | SSH (common on jailbroken iOS) | `ios.network.ssh` / `android.network.ssh` |
-| 5037 | ADB | `android.network.adb` |
-| 27042 | Frida default | `android.network.frida` / `ios.network.frida` |
+| Port | Typical service | Suggested signal id | Strength | Notes |
+|---:|---|---|---|---|
+| 22 / 44 | SSH (OpenSSH on jailbroken iOS, Dropbear on Meridian/checkra1n) | `ios.network.ssh` / `android.network.ssh` | High | Standard jailbreak signal; ports 22 and 44 both documented ([ElcomSoft](https://medium.com/@elcomsoft/ios-jailbreaks-ssh-and-root-password-a911441e33a)). |
+| 27042 | Frida default | `android.network.frida` / `ios.network.frida` | High | Confirmed default in Frida 17.x (2025); port is changeable via `-l` so absence is not proof of clean. |
+| 5037 | ADB | `android.network.adb` | Weak | **ADB server runs on the host machine, not the device.** From an app's perspective, `127.0.0.1:5037` only responds if the device is running `adbd` in TCP mode (rare) or is an emulator. Useful as an emulator indicator, not a root signal. |
 
-**Plan:** new `cpp/TcpProbe.hpp` / `.cpp` with non-blocking connect, short per-port deadline, RAII socket cleanup, **127.0.0.1 / ::1 only**. Wire from `AndroidChecks` and `IOSChecks`. Success (connect or identifiable banner) is a high-weight signal; failure to connect is silence (not a clean bill of health). Never probe non-loopback addresses. Fold into the existing `timeoutMs` budget so a slow localhost stack cannot stall the pass. P3 may extend the same helper with `meta.tcp.*` banner fingerprints.
+**Plan:** new `cpp/TcpProbe.hpp` / `.cpp` with non-blocking connect, short per-port deadline, RAII socket cleanup, **127.0.0.1 / ::1 only**. Wire from `AndroidChecks` and `IOSChecks`. Success (connect or identifiable banner) is a high-weight signal; failure to connect is silence (not a clean bill of health). Never probe non-loopback addresses. Fold into the existing `timeoutMs` budget so a slow localhost stack cannot stall the pass. Weight the ADB (5037) signal low — it mainly catches emulators. P3 may extend the same helper with `meta.tcp.*` banner fingerprints.
 
 #### 4. SELinux and dangerous Android properties — **partial**
 
 Shipped: `/sys/fs/selinux/enforce` → `android.selinux.permissive`. Still useful:
 
-- Cross-check via `__system_property_get("ro.build.selinux")` so a single blocked sysfs path cannot hide a permissive policy.
-- Additional properties: `ro.debuggable`, `service.adb.root`, `ro.secure`, and related debug/adb roots.
-- Treat unexpected values as medium/low signals with OEM-aware caveats (see whitelist); dedupe equivalent SELinux evidence in scoring.
+- **Do not rely on `ro.build.selinux`** as a cross-check. This property is unreliable: it can be `0` while SELinux is `Enforcing` ([Magisk issue #1477](https://github.com/topjohnwu/Magisk/issues/1477)) and is frequently empty on production devices ([Stack Overflow](https://stackoverflow.com/questions/18727941/how-do-i-detect-if-selinux-is-enabled-in-an-android-application)). Use it only as a very weak correlation signal, or drop it entirely.
+- Additional properties (`ro.debuggable`, `service.adb.root`, `ro.secure`) are real but **hidden by Shamiko** via `resetprop`. They also flag legitimate `userdebug`/`eng` builds (development devices, CI emulators). Treat as low-weight signals with explicit dev-build caveats; never block on them alone.
+- Dedupe equivalent SELinux evidence in scoring so the sysfs file and a property cross-check (if added) do not double-count.
 - Prefer `__system_property_get` in `AndroidProbes` (already the pattern); do **not** shell out to `getprop` via `Runtime.exec`.
 
 #### 5. iOS URL scheme checks — **open (P1)**
 
 `UIApplication.canOpenURL` for schemes such as `cydia://`, `sileo://`, `zbra://`, `filza://` is not implemented. This requires a thin Swift edge HybridObject (UIKit) called from the C++ runner, plus `LSApplicationQueriesSchemes` entries via the Expo config plugin / app config.
 
-**Plan:** async-safe main-thread hop only if UIKit requires it; cache the result for the duration of one `checkDetailed()` pass; missing scheme registration must yield `unavailable` or no signal, never a false positive. Document that modern iOS limits scheme querying.
+**iOS 15+ constraint:** `LSApplicationQueriesSchemes` is hard-capped at **50 entries** per app ([Cromulent Labs](https://cromulentlabs.wordpress.com/tag/canopenurl/), [Apple Developer Forums](https://developer.apple.com/forums/thread/4650)). This cap is **shared across the entire host app** — not just the library. Host apps may already be using part of their budget for unrelated purposes (payment SDKs, social login, etc.). All schemes beyond the first 50 will silently return `NO` from `canOpenURL`.
+
+**Plan:**
+- Declare a **minimal** set of schemes (start with 2–4: `cydia`, `sileo`, `zbra`, `filza`). Exclude lower-value schemes like `undecimus://` and `activator://` to conserve budget.
+- Make the scheme list **configurable** so host apps can drop ones they don't want to spend budget on.
+- Document the 50-entry cap clearly in the README so adopters can budget correctly.
+- Async-safe main-thread hop only if UIKit requires it; cache the result for the duration of one `checkDetailed()` pass; missing scheme registration must yield `unavailable` or no signal, never a false positive.
 
 #### 6. File-read deadlines — **partial**
 
@@ -289,9 +298,15 @@ Jest covers wrappers. Pure C++ parsers/scoring are structured for fixtures but h
 - Host-side (or Android instrumented) tests for `ProcParsers`, `Scoring`, SELinux text parsing, and TCP probe state machines with fake FDs where possible.
 - Keep device/emulator behavioral checks in the example app and `e2e/matrix.md`.
 
-#### 10. Mount namespace refinement — **partial**
+#### 10. Mount namespace refinement — **partial / broken in practice**
 
-`scanNamespaceOnlyMountArtifacts` today reports when a known root **token** appears in the app mountinfo and not in PID 1’s. Reshape toward structured path/content diff rather than token-only matching; never flag namespace identity mismatch alone. On iOS, unexpected nesting under `/private` remains a research item with high FP risk — gate behind validation.
+`scanNamespaceOnlyMountArtifacts` today reads `/proc/1/mountinfo` to compare against the app's own mountinfo. **This file is unreadable by untrusted Android apps on stock devices** — the kernel/PID 1 hides it from the app's SELinux domain (confirmed by [gopsutil issue #1159](https://github.com/shirou/gopsutil/issues/1159) and Android SELinux policy for `untrusted_app`). The current code handles the failure gracefully (`readFileIfExists` returns `std::nullopt`), which means the `ANDROID_MOUNT_OVERLAY` signal **effectively never fires on most devices** — it is dead code in the current path.
+
+**Plan:** drop the `/proc/1/mountinfo` comparison in favor of alternatives that work within the app's own namespace:
+
+- Parse the app's `/proc/self/mountinfo` and `/proc/self/mounts` for structured path/content diffs (lines present in one but not the other, suspicious overlay paths, unexpected mount sources) rather than token-only matching.
+- Use `statx(2)` with `STATX_ATTR_MOUNT_ROOT` on expected-mount-root paths (e.g. `/data/adb/Modules`) to detect files that are *not* a mount root but should be, or vice versa — Shamiko does not yet hide this attribute.
+- Never flag namespace identity mismatch alone. On iOS, unexpected nesting under `/private` remains a research item with high FP risk — gate behind validation.
 
 #### 11. Extended meta.tcp / advanced probes — **open (P3)**
 
@@ -312,11 +327,11 @@ Canonical work queue. Prefer one row per PR. Every new positive check needs a ca
 
 | Priority | Item | Where it lands | Notes |
 |---|---|---|---|
-| **P0** | Rootless iOS detection paths and distinct signal ids (TrollStore / rootless bootstrap / expanded artifacts) | `cpp/IOSChecks.cpp`, `cpp/SignalCatalog.hpp` + `.cpp`, `src/wrappers.ts` (`signalReasons`), README catalog | Do not overload `ios.jailbreak.artifact` forever; add e.g. `ios.jailbreak.rootless`, `ios.jailbreak.trollstore`. Medium weight until physical-device validated. |
+| **P0** | Rootless iOS detection paths and distinct signal ids (Dopamine/palera1n bootstrap, expanded artifacts) | `cpp/IOSChecks.cpp`, `cpp/SignalCatalog.hpp` + `.cpp`, `src/wrappers.ts` (`signalReasons`), README catalog | Do not overload `ios.jailbreak.artifact` forever; add e.g. `ios.jailbreak.rootless`, `ios.jailbreak.dopamine`. TrollStore is a separate category (`ios.sideload.trollstore`) — not a jailbreak. Medium weight until physical-device validated. |
 | **P0** | Frida-renamed patterns (`libhelper`, `libgadget`, cautious `gadget` tokens) | `cpp/ProcParsers.cpp` (`K_HOOK_PATTERNS`), mirror tokens in `cpp/IOSChecks.cpp` `_dyld` scan | Keep under existing high-weight Frida/maps/dyld signal families; watch false positives on benign libs named `helper`. |
-| **P1** | Loopback TCP port probes (27042 Frida, 22/44 SSH, 5037 ADB) | New `cpp/TcpProbe.hpp` / `cpp/TcpProbe.cpp` (or `LocalPortProbes.*`); wire from `cpp/AndroidChecks.cpp` and `cpp/IOSChecks.cpp`; catalog ids; CMake + podspec sources | `127.0.0.1` / `::1` only; non-blocking connect; short per-port deadline inside total `timeoutMs`; RAII FDs; refused/timeout = no signal. |
-| **P1** | Cross-check SELinux via `__system_property_get("ro.build.selinux")` (and related debug props) | `cpp/AndroidProbes.cpp`, optional fold in `cpp/AndroidChecks.cpp` | `/sys/fs/selinux/enforce` already ships. Property path is a second vector, not a shell-out to `getprop`. Also consider `ro.debuggable`, `service.adb.root`, `ro.secure`. Dedupe with `android.selinux.permissive` where equivalent. |
-| **P1** | iOS Swift edge HybridObject for `UIApplication.canOpenURL` | New files under `ios/` (currently empty/reserved); Nitro/Swift edge + call from C++ runner; `app.plugin.js` merges `LSApplicationQueriesSchemes` | Schemes: `cydia`, `sileo`, `zbra`, `filza` (start minimal). Undeclared scheme → no false positive. |
+| **P1** | Loopback TCP port probes (27042 Frida, 22/44 SSH, 5037 ADB) | New `cpp/TcpProbe.hpp` / `cpp/TcpProbe.cpp` (or `LocalPortProbes.*`); wire from `cpp/AndroidChecks.cpp` and `cpp/IOSChecks.cpp`; catalog ids; CMake + podspec sources | `127.0.0.1` / `::1` only; non-blocking connect; short per-port deadline inside total `timeoutMs`; RAII FDs; refused/timeout = no signal. Weight ADB (5037) low — it mainly catches emulators, not physical-device root. |
+| **P1** | SELinux property depth (with caveats) | `cpp/AndroidProbes.cpp`, optional fold in `cpp/AndroidChecks.cpp` | `/sys/fs/selinux/enforce` already ships. Do **not** rely on `ro.build.selinux` — it's unreliable (can be `0` when enforcing, often empty). `ro.debuggable`, `service.adb.root`, `ro.secure` are hidden by Shamiko and flag legitimate dev builds; treat as low-weight signals with explicit caveats. Dedupe with `android.selinux.permissive` where equivalent. |
+| **P1** | iOS Swift edge HybridObject for `UIApplication.canOpenURL` | New files under `ios/` (currently empty/reserved); Nitro/Swift edge + call from C++ runner; `app.plugin.js` merges `LSApplicationQueriesSchemes` | Schemes: `cydia`, `sileo`, `zbra`, `filza` (start minimal, 4 entries). `LSApplicationQueriesSchemes` is hard-capped at 50 entries shared with the host app; make the scheme list configurable so hosts can drop ones they don't want to spend budget on. Undeclared scheme → no false positive. |
 | **P1** | `readFileIfExists` with deadline (and/or size cap) | `cpp/ProcParsers.hpp` / `.cpp` (`readFileIfExists`), call sites in `cpp/AndroidChecks.cpp` | Runner-level deadline exists; individual reads can still stall. Unreadable or timed-out read ⇒ no detection / `unavailable`, never invert to compromise. |
 | **P2** | String obfuscation for path/token tables | New `cpp/ObfuscatedString.hpp` (or build-time encode); apply at `K_HOOK_PATTERNS`, mount tokens, iOS path lists | Raises casual RE bar only; do not claim bypass resistance. |
 | **P2** | OEM whitelist for benign `test-keys` / unusual SELinux | Small JSON or constexpr table + gate in `cpp/AndroidChecks.cpp` / probes | Low-severity signals only. Document every entry. Never whitelist away maps/mount high signals. |
@@ -373,7 +388,7 @@ Canonical work queue. Prefer one row per PR. Every new positive check needs a ca
 4. Backend verifies with Google and applies product-specific policy.
 5. Bind sensitive API actions to short-lived server-issued session decisions.
 
-### Phase 5: local service and property depth — **open (this plan)**
+### Phase 4: local service and property depth — **open (this plan)**
 
 See roadmap PRs 7–8. Network probes are loopback-only; property expansion stays in `AndroidProbes`.
 
@@ -505,7 +520,7 @@ Validate every release on:
 
 ## Release milestones
 
-### Milestone 1: Nitro migration + reliable local baseline — **largely complete**
+### Milestone 1: Nitro migration + reliable local baseline — **complete**
 
 - Nitro spec, codegen pipeline, shared C++ core
 - Detailed scored API and legacy wrappers
@@ -563,12 +578,12 @@ The backend must verify the Integrity token directly with the provider, validate
 
 Kept small and focused, in order (see **Summary — what to do next** for file-level detail):
 
-1. **PR 6 — Rootless iOS + Frida rename tokens (P0):** `IOSChecks` paths/ids; `K_HOOK_PATTERNS` + iOS `_dyld` renames (`libhelper`, `libgadget`, …); `SignalCatalog` + `signalReasons` + README.
-2. **PR 7 — Loopback TCP probes (P1):** new `cpp/TcpProbe.*` for 27042 / 22 / 44 / 5037; wire both platform checkers; high-weight signals; budget-aware; state-machine tests.
-3. **PR 8 — SELinux property + debug props (P1):** `__system_property_get("ro.build.selinux")` cross-check plus `ro.debuggable` / `service.adb.root` / `ro.secure` in `AndroidProbes`.
-4. **PR 9 — iOS URL schemes (P1):** Swift edge HybridObject under `ios/` for `canOpenURL`; config plugin `LSApplicationQueriesSchemes`; C++ orchestration.
+1. **PR 6 — Rootless iOS + Frida rename tokens (P0):** `IOSChecks` paths/ids for Dopamine/palera1n (TrollStore as separate category); `K_HOOK_PATTERNS` + iOS `_dyld` renames (`libhelper`, `libgadget`, …); `SignalCatalog` + `signalReasons` + README.
+2. **PR 7 — Loopback TCP probes (P1):** new `cpp/TcpProbe.*` for 27042 / 22 / 44 / 5037; wire both platform checkers; high-weight signals (5037 low); budget-aware; state-machine tests.
+3. **PR 8 — SELinux property depth with caveats (P1):** skip `ro.build.selinux` (unreliable); add `ro.debuggable` / `service.adb.root` / `ro.secure` as low-weight signals with explicit dev-build caveats in `AndroidProbes`. Document Shamiko hiding in the catalog.
+4. **PR 9 — iOS URL schemes (P1):** Swift edge HybridObject under `ios/` for `canOpenURL`; config plugin `LSApplicationQueriesSchemes`; **make scheme list configurable** to respect host app's 50-entry budget; C++ orchestration.
 5. **PR 10 — Deadline-aware `readFileIfExists` (P1):** deadline/size caps in `ProcParsers`; call sites honor shared budget without stalling.
-6. **Later — P2/P3:** `ObfuscatedString.hpp`, OEM whitelist in `AndroidChecks`, C++ unit tests under `cpp/__tests__/`, `scanNamespaceOnlyMountArtifacts` path-diff, `meta.tcp.*`, Play Integrity.
+6. **Later — P2/P3:** `ObfuscatedString.hpp`, OEM whitelist in `AndroidChecks`, C++ unit tests under `cpp/__tests__/`, `scanNamespaceOnlyMountArtifacts` reshaped (drop `/proc/1/mountinfo` comparison, use `statx` + self-namespace diff), `meta.tcp.*`, Play Integrity.
 
 ## Security implementation notes for new checks
 
@@ -582,4 +597,13 @@ Kept small and focused, in order (see **Summary — what to do next** for file-l
 
 ## Conclusion
 
-The Nitro scored baseline covers classic Android root and conservative iOS jailbreak signals, with shared aggregation and a watchdog that cannot drift from `checkDetailed()`. Remaining work targets modern concealment: rootless iOS footprints, renamed instrumentation, loopback service exposure, deeper property checks, UIKit URL schemes, and hardening/obfuscation. Combining filesystem, process, memory, network, and property signals into a fused risk score — rather than a single boolean — remains the design center. Each new check should land as a small PR with catalog ids, timeout safety, and matrix notes; none of this replaces server-side attestation for authorization decisions.
+The Nitro scored baseline covers classic Android root and conservative iOS jailbreak signals, with shared aggregation and a watchdog that cannot drift from `checkDetailed()`. Remaining work targets modern concealment: rootless iOS footprints (Dopamine/palera1n), renamed instrumentation, loopback service exposure, UIKit URL schemes (within the 50-entry budget cap), and hardening/obfuscation.
+
+**Known limitations to carry forward:**
+- `ro.build.selinux` is unreliable and should not be used as a cross-check for SELinux enforcement.
+- `/proc/1/mountinfo` is unreadable by untrusted apps on stock Android; the current namespace-only mount signal is dead code and must be reshaped to use `statx` + self-namespace diffs.
+- ADB port 5037 is a weak signal on physical devices (mainly catches emulators).
+- Shamiko hides `ro.debuggable` / `service.adb.root` / `ro.secure` via `resetprop`; these are low-weight, high-FP signals.
+- `LSApplicationQueriesSchemes` is capped at 50 entries shared with the host app; URL scheme probes must be minimal and configurable.
+
+Combining filesystem, process, memory, network, and property signals into a fused risk score — rather than a single boolean — remains the design center. Each new check should land as a small PR with catalog ids, timeout safety, and matrix notes; none of this replaces server-side attestation for authorization decisions.

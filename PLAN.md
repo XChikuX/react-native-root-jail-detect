@@ -336,7 +336,7 @@ Canonical work queue. Prefer one row per PR. Every new positive check needs a ca
 | **P2** | String obfuscation for path/token tables | New `cpp/ObfuscatedString.hpp` (or build-time encode); apply at `K_HOOK_PATTERNS`, mount tokens, iOS path lists | Raises casual RE bar only; do not claim bypass resistance. |
 | **P2** | OEM whitelist for benign `test-keys` / unusual SELinux | Small JSON or constexpr table + gate in `cpp/AndroidChecks.cpp` / probes | Low-severity signals only. Document every entry. Never whitelist away maps/mount high signals. |
 | **P2** | C++ unit tests for pure logic | `cpp/__tests__/` (or host test target) for `Scoring.hpp`, `ProcParsers`, `SignalCatalog`; keep Jest for `src/wrappers.ts` | Fixture strings already match the pure-parser split. Add TcpProbe state-machine tests with fakes where possible. |
-| **P2** | Mount-namespace overlay detection reshaped (path/content diff, not only token presence) | `cpp/ProcParsers.cpp` (`scanNamespaceOnlyMountArtifacts`) | Today: known root token in self mountinfo and absent from init. Evolve toward structured path diff; **never** flag namespace identity mismatch alone. |
+| **P2** | Mount-namespace overlay detection reshaped (path/content diff, `statx`) | `cpp/ProcParsers.cpp` (`scanNamespaceOnlyMountArtifacts`) | Today: known root token in self mountinfo and absent from init; `/proc/1/mountinfo` is unreadable on stock Android. Evolve toward structured path diff and `statx(STATX_ATTR_MOUNT_ROOT)`; **never** flag namespace identity mismatch alone. |
 | **P3** | Richer `meta.tcp.*` probes (banner/fingerprint beyond connect) | Extend `cpp/TcpProbe.*`; optional signals from both platform checkers | Only after basic connect probes are stable and FP-reviewed. |
 | **P3** | Play Integrity + backend policy | Kotlin edge (deferred), `enablePlayIntegrity`, backend verifier docs | Server verifies token; client score is never authoritative. |
 | **P3** | Quarterly artifact/catalog refresh + optional sanitized signal-id telemetry | `SignalCatalog`, README, `e2e/matrix.md` | No raw paths in production telemetry. |
@@ -583,7 +583,7 @@ Kept small and focused, in order (see **Summary — what to do next** for file-l
 3. **PR 8 — SELinux property depth with caveats (P1):** skip `ro.build.selinux` (unreliable); add `ro.debuggable` / `service.adb.root` / `ro.secure` as low-weight signals with explicit dev-build caveats in `AndroidProbes`. Document Shamiko hiding in the catalog.
 4. **PR 9 — iOS URL schemes (P1):** Swift edge HybridObject under `ios/` for `canOpenURL`; config plugin `LSApplicationQueriesSchemes`; **make scheme list configurable** to respect host app's 50-entry budget; C++ orchestration.
 5. **PR 10 — Deadline-aware `readFileIfExists` (P1):** deadline/size caps in `ProcParsers`; call sites honor shared budget without stalling.
-6. **Later — P2/P3:** `ObfuscatedString.hpp`, OEM whitelist in `AndroidChecks`, C++ unit tests under `cpp/__tests__/`, `scanNamespaceOnlyMountArtifacts` reshaped (drop `/proc/1/mountinfo` comparison, use `statx` + self-namespace diff), `meta.tcp.*`, Play Integrity.
+6. **Later — P2/P3:** `ObfuscatedString.hpp`, OEM whitelist in `AndroidChecks`, C++ unit tests under `cpp/__tests__/`, `scanNamespaceOnlyMountArtifacts` reshaped (acknowledge `/proc/1/mountinfo` is unreadable on stock Android; use `statx` + self-namespace path diff), `meta.tcp.*`, Play Integrity.
 
 ## Security implementation notes for new checks
 

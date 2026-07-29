@@ -250,8 +250,13 @@ namespace margelo::nitro::rootjaildetect {
     std::string_view initMountinfoContent
   ) noexcept {
     std::vector<ProcFinding> findings;
-    // A different mount namespace is normal for Android apps. Only report a
-    // known root token that is visible to this process and absent from PID 1.
+    // A different mount namespace is normal for Android apps, and `/proc/1/mountinfo`
+    // is unreadable by untrusted apps on stock Android (PID 1 is hidden by SELinux).
+    // The namespace-only comparison is therefore mostly dead code on production
+    // devices. It is retained as a low-weight fallback for environments where the
+    // init namespace happens to be visible (emulators, some debug builds), but the
+    // real overlay detection work is shifting to structured self-namespace path
+    // diffs and `statx(STATX_ATTR_MOUNT_ROOT)` in later hardening (PLAN.md gap #10).
     for (const PatternEntry& entry : K_MOUNT_PATTERNS) {
       if (containsCI(selfMountinfoContent, entry.token) &&
           !containsCI(initMountinfoContent, entry.token)) {

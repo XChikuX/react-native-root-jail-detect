@@ -62,6 +62,18 @@ namespace margelo::nitro::rootjaildetect {
     inline constexpr std::string_view ANDROID_CMDLINE_INSTRUMENTATION = "android.cmdline.instrumentation";
     /// Local instrumentation socket exposed by the current process namespace.
     inline constexpr std::string_view ANDROID_SOCKET_INSTRUMENTATION = "android.socket.instrumentation";
+    /// Frida server listening on the default loopback port (27042).
+    inline constexpr std::string_view ANDROID_NETWORK_FRIDA = "android.network.frida";
+    /// SSH server listening on loopback ( Jailbroken iOS / some Android setups).
+    inline constexpr std::string_view ANDROID_NETWORK_SSH = "android.network.ssh";
+    /// ADB daemon listening on loopback (emulator or rare TCP-mode adbd).
+    inline constexpr std::string_view ANDROID_NETWORK_ADB = "android.network.adb";
+
+    // ---- iOS network ----
+    /// Frida server listening on the default loopback port (27042).
+    inline constexpr std::string_view IOS_NETWORK_FRIDA = "ios.network.frida";
+    /// SSH server listening on loopback (ports 22 or 44).
+    inline constexpr std::string_view IOS_NETWORK_SSH = "ios.network.ssh";
 
     // ---- Android: informational ----
     /// `TracerPid` in `/proc/self/status` is nonzero.

@@ -6,6 +6,7 @@
 #include "AndroidProbes.hpp"
 #include "ProcParsers.hpp"
 #include "SignalCatalog.hpp"
+#include "TcpProbe.hpp"
 
 #include <string>
 #include <utility>
@@ -185,6 +186,23 @@ namespace margelo::nitro::rootjaildetect {
       }
       if (!available) {
         result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_RUNTIME));
+      }
+    }
+
+    // ---- Loopback TCP service probes (Frida / SSH / ADB) --------------------
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_RUNTIME));
+      result.partial = true;
+    } else {
+      std::vector<ProcFinding> networkFindings = probeDefaultLocalTcpServices(deadline);
+      if (networkFindings.empty() &&
+          std::find_if(result.signals.begin(), result.signals.end(),
+                       [](const DetectionSignal& s) {
+                         return s.id == SignalId::ANDROID_CHECK_RUNTIME;
+                       }) == result.signals.end()) {
+        // Probing ports gave no additional signal; nothing to report.
+      } else {
+        appendFindings(result.signals, networkFindings, includeEvidence);
       }
     }
 

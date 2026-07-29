@@ -24,6 +24,11 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_MOUNT_OVERLAY) return SignalSpec{SignalId::ANDROID_MOUNT_OVERLAY, Severity::LOW, 10.0};
     if (id == SignalId::ANDROID_CMDLINE_INSTRUMENTATION) return SignalSpec{SignalId::ANDROID_CMDLINE_INSTRUMENTATION, Severity::HIGH, 30.0};
     if (id == SignalId::ANDROID_SOCKET_INSTRUMENTATION) return SignalSpec{SignalId::ANDROID_SOCKET_INSTRUMENTATION, Severity::HIGH, 30.0};
+    if (id == SignalId::ANDROID_NETWORK_FRIDA) return SignalSpec{SignalId::ANDROID_NETWORK_FRIDA, Severity::HIGH, 30.0};
+    if (id == SignalId::ANDROID_NETWORK_SSH) return SignalSpec{SignalId::ANDROID_NETWORK_SSH, Severity::HIGH, 30.0};
+    if (id == SignalId::ANDROID_NETWORK_ADB) return SignalSpec{SignalId::ANDROID_NETWORK_ADB, Severity::LOW, 10.0};
+    if (id == SignalId::IOS_NETWORK_FRIDA) return SignalSpec{SignalId::IOS_NETWORK_FRIDA, Severity::HIGH, 30.0};
+    if (id == SignalId::IOS_NETWORK_SSH) return SignalSpec{SignalId::IOS_NETWORK_SSH, Severity::HIGH, 30.0};
     // Informational: contributes 0 by default. Debugger state is reported
     // separately on `DeviceRiskResult.debuggerDetected` and only folds into
     // `compromised` when `treatDebuggerAsCompromise` is configured.

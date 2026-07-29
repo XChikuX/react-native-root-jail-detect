@@ -27,6 +27,7 @@ add_library(
   ../../cpp/AndroidProbes.cpp
   ../../cpp/AndroidChecks.cpp
   ../../cpp/IOSChecks.cpp
+  ../../cpp/TcpProbe.cpp
 )
 
 # Hand-written implementations live in cpp/ at the package root.

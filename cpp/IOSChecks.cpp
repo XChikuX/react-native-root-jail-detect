@@ -4,6 +4,7 @@
 
 #include "IOSChecks.hpp"
 #include "SignalCatalog.hpp"
+#include "TcpProbe.hpp"
 
 #include <chrono>
 #include <cstring>
@@ -211,6 +212,23 @@ namespace margelo::nitro::rootjaildetect {
         (process.kp_proc.p_flag & P_TRACED) != 0) {
       result.debuggerDetected = true;
       result.signals.push_back(buildSignal(SignalId::IOS_DEBUGGER_SYSCTL, "sysctl-traced", includeEvidence));
+    }
+
+    // ---- Loopback TCP service probes (Frida / SSH) --------------------------
+    if (expired(deadline)) {
+      result.partial = true;
+    } else {
+      // Only probe the iOS-relevant Frida and SSH ports; ADB is Android-only.
+      constexpr PortProbe kIOSProbes[] = {
+        {22,    SignalId::IOS_NETWORK_SSH,   "ssh-listener"},
+        {44,    SignalId::IOS_NETWORK_SSH,   "ssh-listener-alt"},
+        {27042, SignalId::IOS_NETWORK_FRIDA, "frida-listener"},
+      };
+      std::vector<ProcFinding> networkFindings =
+        probeLocalTcpServices(kIOSProbes, sizeof(kIOSProbes) / sizeof(kIOSProbes[0]), deadline);
+      for (const ProcFinding& finding : networkFindings) {
+        result.signals.push_back(buildSignal(finding.signalId, finding.evidence, includeEvidence));
+      }
     }
 #endif
 #else

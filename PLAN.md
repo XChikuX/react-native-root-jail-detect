@@ -2,9 +2,13 @@
 
 ## Goal
 
-Evolve `react-native-root-jail-detect` from a path-based boolean checker into an Expo-compatible, Nitro-powered, scored device-risk module. The goal is to detect common rooted Android configurations including Magisk + Zygisk + DenyList more reliably, reduce false positives on stock iOS devices, and provide server-verifiable integrity signals.
+Evolve `@psync/anti-jailbreak` from a path-based boolean checker into an Expo-compatible, Nitro-powered, scored device-risk module. The goal is to detect common rooted Android configurations including Magisk + Zygisk + DenyList more reliably, reduce false positives on stock iOS devices, and provide server-verifiable integrity signals.
 
-This is a **full migration to Nitro Modules targeting v2.0.0**: New Architecture only, one native bridge, no handwritten Objective-C externs, no TurboModule codegen spec. The existing TurboModule (`src/NativeRootJailDetect.ts`), iOS `RootJailDetect.m` externs, and generated `NativeRootJailDetectSpec` classes are removed.
+This is a **full Nitro migration targeting v2.0.0**: New Architecture only, one native bridge, no handwritten Objective-C externs, no TurboModule codegen spec. The existing TurboModule (`src/NativeRootJailDetect.ts`), iOS `RootJailDetect.m` externs, and generated `NativeRootJailDetectSpec` classes are removed.
+
+The package was previously published as `react-native-root-jail-detect`. Version 2.0.0 is published under the `@psync/anti-jailbreak` name.
+
+
 
 ## Scope and principles
 

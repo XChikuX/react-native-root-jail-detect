@@ -1,5 +1,5 @@
 {
-  "name": "react-native-root-jail-detect-example",
+  "name": "@psync/anti-jailbreak-example",
   "version": "0.0.1",
   "private": true,
   "scripts": {

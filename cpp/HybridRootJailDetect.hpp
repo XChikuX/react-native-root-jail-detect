@@ -3,12 +3,14 @@
 ///
 /// Shared C++ implementation of the `RootJailDetect` HybridObject.
 ///
-/// PR 1 (Nitro skeleton) ships a stub: `checkDetailed()` resolves immediately
-/// with a clean, empty result so the JS layer and example app compile and run
-/// end-to-end. Real detection checks (mountinfo/maps parsing, SELinux,
-/// properties, sandbox, dyld, debugger state) land in subsequent PRs and will
-/// be added as focused helper files under `cpp/`, keeping this file as
-/// orchestration only.
+/// PR 1 (Nitro skeleton) shipped an empty stub. PR 2 adds the Android scored
+/// baseline (PLAN.md Phase 1): `/proc` parsing, SELinux, root-manager paths,
+/// build properties, and `TracerPid` as informational. iOS Phase 1 checks and
+/// the real `SecurityWatchdog` background thread land in PR 3.
+///
+/// The HybridObject itself stays orchestration-only: it resolves config,
+/// measures the total time budget, delegates platform work to focused helper
+/// files under `cpp/`, and aggregates their signals into a `DeviceRiskResult`.
 ///
 
 #pragma once

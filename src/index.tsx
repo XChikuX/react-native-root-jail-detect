@@ -1,4 +1,4 @@
-// Public entry point for `react-native-root-jail-detect`.
+// Public entry point for `@psync/anti-jailbreak`.
 //
 // This file is a barrel only. All detection logic lives in the native Nitro
 // HybridObjects (`src/specs/*.nitro.ts`); legacy boolean wrappers live in

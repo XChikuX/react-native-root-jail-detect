@@ -1,7 +1,7 @@
 {
-  "author": "Rushikesh Pandit <rushikesh.d.pandit@gmail.com> (https://github.com/rushikeshpandit)",
+  "author": "Srikanth Gopalakrishnan <oss@psync.club> (https://github.com/XChikuX)",
   "bugs": {
-    "url": "https://github.com/rushikeshpandit/react-native-root-jail-detect/issues"
+    "url": "https://github.com/XChikuX/react-native-root-jail-detect/issues"
   },
   "commitlint": {
     "extends": [
@@ -19,7 +19,7 @@
     "type": "nitro-module",
     "version": "0.57.2"
   },
-  "description": "A lightweight and reliable React Native library to detect rooted Android devices and jailbroken iOS devices using modern Kotlin, Swift, and TypeScript. Built for security-focused mobile applications.",
+  "description": "A lightweight and reliable React Native Nitro Module to detect rooted Android devices and jailbroken iOS devices using C++, Kotlin, and Swift. Built for security-focused mobile applications.",
   "devDependencies": {
     "@commitlint/config-conventional": "^19.8.1",
     "@eslint/compat": "^1.3.2",
@@ -73,7 +73,7 @@
     "!**/__mocks__",
     "!**/.*"
   ],
-  "homepage": "https://github.com/rushikeshpandit/react-native-root-jail-detect#readme",
+  "homepage": "https://github.com/psync/anti-jailbreak#readme",
   "jest": {
     "modulePathIgnorePatterns": [
       "<rootDir>/example/node_modules",
@@ -87,6 +87,7 @@
     "android",
     "root",
     "jailbreak",
+    "anti-jailbreak",
     "security",
     "integrity",
     "root-detection",
@@ -114,8 +115,8 @@
   ],
   "license": "MIT",
   "main": "./lib/module/index.js",
-  "name": "react-native-root-jail-detect",
-  "packageManager": "yarn@4.11.0",
+  "name": "@psync/anti-jailbreak",
+  "packageManager": "bun@1.3.14",
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
@@ -129,6 +130,7 @@
     "useTabs": false
   },
   "publishConfig": {
+    "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
   "react-native-builder-bob": {
@@ -170,7 +172,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rushikeshpandit/react-native-root-jail-detect.git"
+    "url": "git+https://github.com/psync/anti-jailbreak.git"
   },
   "scripts": {
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",

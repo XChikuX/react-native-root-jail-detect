@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.homepage     = package["homepage"]
   s.license      = package["license"]
   s.authors      = package["author"]
-  s.source       = { :git => "https://github.com/rushikeshpandit/react-native-root-jail-detect.git", :tag => "#{s.version}" }
+  s.source       = { :git => "https://github.com/psync/anti-jailbreak.git", :tag => "#{s.version}" }
 
   s.platforms    = { :ios => min_ios_version_supported }
 

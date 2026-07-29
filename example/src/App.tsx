@@ -16,7 +16,7 @@ import {
   getDetectionReasons,
   checkDetailed,
   type DeviceRiskResult,
-} from 'react-native-root-jail-detect';
+} from '@psync/anti-jailbreak';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 function App() {

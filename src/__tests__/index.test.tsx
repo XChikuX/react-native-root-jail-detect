@@ -93,7 +93,7 @@ function stubResult(overrides: Record<string, unknown> = {}) {
 
 // --- Tests ----------------------------------------------------------------
 
-describe('react-native-root-jail-detect wrappers', () => {
+describe('@psync/anti-jailbreak wrappers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     setPlatform('android');

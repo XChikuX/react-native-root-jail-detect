@@ -16,6 +16,15 @@ add_library(
   # cmake file included below.
   ../../cpp/HybridRootJailDetect.cpp
   ../../cpp/HybridSecurityWatchdog.cpp
+  # PR 2: Android scored baseline helpers. Pure parsers live in
+  # ProcParsers.cpp / Scoring.hpp; platform-specific probes (filesystem and
+  # __system_property_get) live in AndroidProbes.cpp and are compiled under
+  # #if defined(__ANDROID__) so the same files are safe to include in a
+  # host-side unit-test build later.
+  ../../cpp/SignalCatalog.cpp
+  ../../cpp/ProcParsers.cpp
+  ../../cpp/AndroidProbes.cpp
+  ../../cpp/AndroidChecks.cpp
 )
 
 # Hand-written implementations live in cpp/ at the package root.

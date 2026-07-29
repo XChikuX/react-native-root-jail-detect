@@ -1,339 +1,280 @@
-# React Native Root/Jail Detect
+# @psync/anti-jailbreak
 
-[![npm
-version](https://img.shields.io/npm/v/react-native-root-jail-detect.svg)](https://www.npmjs.com/package/react-native-root-jail-detect)
-[![License:
-MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![PRs
-Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/rushikeshpandit/react-native-root-jail-detect/pulls)
+[![npm version](https://img.shields.io/npm/v/@psync/anti-jailbreak.svg)](https://www.npmjs.com/package/@psync/anti-jailbreak)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-A lightweight, blazing‑fast **React Native security module** to detect
-rooted (Android) and jailbroken (iOS) devices, runtime instrumentation
-tools (Frida), debuggers, and emulators.
+A **React Native Nitro Module** that detects rooted (Android) and jailbroken
+(iOS) devices, emulators/simulators, attached debuggers, and runtime
+instrumentation frameworks (Frida, Zygisk/LSPosed/Riru). It exposes a **scored,
+structured device-risk API** plus an optional periodic security watchdog.
 
-Perfect for apps that require **strong client‑side integrity checks**
-such as:
+v2.0.0 is a ground-up rewrite on top of [Nitro Modules](https://nitro.margelo.com/).
+It is **New Architecture only** — there is no Old-Architecture bridge fallback, no
+TurboModule spec, and no handwritten JNI/externs. The shared detection core is
+written in C++ and shared across iOS and Android; Swift and Kotlin are used only
+for thin platform-edge probes.
 
--   Banking apps
--   Fintech platforms
--   Enterprise apps
--   Gaming anti‑cheat systems
--   Security‑sensitive applications
+> **Security note:** no client-side root/jailbreak detection is foolproof. This
+> library is a defense-in-depth signal, not a guarantee. Pair it with server-side
+> attestation (e.g. Play Integrity verified on your backend), SSL pinning, and
+> other layered controls. See [Security limitations](#security-limitations).
 
-------------------------------------------------------------------------
+---
 
-# Features
+## Features
 
--   **Fast** -- Native implementation (Swift + Kotlin + C/C++)
--   **Cross‑platform** -- Works on both Android and iOS
--   **New Architecture Ready** -- Supports Fabric & TurboModules
--   **Runtime Protection** -- Includes a security watchdog
--   **Frida Detection** -- Detects dynamic instrumentation
--   **Debugger Detection** -- Detects runtime debugging
--   **Emulator / Simulator Detection**
--   **Zero Dependencies**
--   **MIT Licensed**
+- **Scored, structured results** — every check produces a `DetectionSignal` with
+  a stable id, severity, and weight; signals aggregate into a 0–100 risk score
+  with a confidence level.
+- **Cross-platform C++ core** — scoring, the signal catalog, pattern matching,
+  and `/proc` parsing are shared; platform-specific probes live at the edges.
+- **New Architecture only** — built on Nitro Modules; no bridge fallback.
+- **Runtime watchdog** — a separate `SecurityWatchdog` HybridObject that
+  periodically re-runs detection and can log, throw, or terminate.
+- **Timeout budget & partial results** — checks that overrun the configured
+  budget surface as `unavailable` signals with `partial: true` rather than
+  throwing.
+- **Stable signal ids** — every detection maps to a documented, versioned id so
+  callers and backends can reason about *what* fired.
 
-------------------------------------------------------------------------
+---
 
-# Advanced Security Features
+## Installation
 
-## Frida Detection
-
-The module detects runtime instrumentation tools such as Frida commonly
-used for reverse engineering and bypassing security checks.
-
-Detection techniques include:
-
--   Frida server port detection
--   Frida thread detection
--   Frida memory scanning
--   Frida runtime symbol detection
--   Frida dynamic library inspection
-
-This helps protect apps from **runtime tampering and reverse
-engineering**.
-
-------------------------------------------------------------------------
-
-## Runtime Security Watchdog
-
-The module includes a **runtime watchdog** that continuously monitors
-the environment even after the app launches.
-
-Example scenario:
-
-App launches → device appears safe\
-Attacker attaches debugger later\
-Watchdog detects it → action triggered
-
-Protection modes:
-
-  Mode              Behavior
-  ----------------- ----------------------------
-  LOG_ONLY          Logs detection events
-  THROW_EXCEPTION   Throws runtime exception
-  TERMINATE         Terminates the application
-
-------------------------------------------------------------------------
-
-# Installation
-
-``` bash
-npm install react-native-root-jail-detect
+```sh
+npm install @psync/anti-jailbreak react-native-nitro-modules
 ```
 
 or
 
-``` bash
-yarn add react-native-root-jail-detect
+```sh
+yarn add @psync/anti-jailbreak react-native-nitro-modules
 ```
 
-------------------------------------------------------------------------
+`react-native-nitro-modules` is a required peer dependency.
 
-# iOS Setup
+### iOS
 
-``` bash
-cd ios
-pod install
-cd ..
-npx react-native run-ios
+```sh
+cd ios && pod install && cd ..
 ```
 
-------------------------------------------------------------------------
+### Android
 
-# Android Setup
+Autolinking handles the rest. React Native 0.83+ with the New Architecture is
+required.
 
-For React Native 0.60+ autolinking works automatically.
+---
 
-``` bash
-npx react-native run-android
+## Quick start
+
+```ts
+import {
+  isDeviceCompromised,
+  getDetectionReasons,
+  checkDetailed,
+  configure,
+} from '@psync/anti-jailbreak';
+
+// Optional: tune thresholds before checking. `undefined` fields keep prior values.
+configure({ minScore: 40, timeoutMs: 400 });
+
+// Primary, structured API.
+const result = await checkDetailed();
+console.log(result.score, result.confidence, result.signals);
+
+// Legacy boolean convenience (derived from checkDetailed).
+const compromised = await isDeviceCompromised();
+if (compromised) {
+  console.warn(await getDetectionReasons());
+}
 ```
 
-------------------------------------------------------------------------
+---
 
-# Basic Usage
+## API
 
-``` typescript
-import RootJailDetect from 'react-native-root-jail-detect';
+### `checkDetailed(): Promise<DeviceRiskResult>`
 
-const checkDeviceSecurity = async () => {
-  const compromised = await RootJailDetect.isDeviceCompromised();
+Run every enabled device-risk check within the configured timeout budget and
+return the full structured result. This is the primary API; the boolean helpers
+below are derived from it.
 
-  if (compromised) {
-    console.warn("Device is rooted/jailbroken");
-  } else {
-    console.log("Device is secure");
-  }
+Checks that cannot complete in time report `unavailable` signals and the result
+is marked `partial: true` rather than failing the call.
+
+### `configure(options: RootJailDetectOptions): void`
+
+Apply configuration that affects subsequent `checkDetailed()` passes and the
+watchdog. Passing `undefined` for a field keeps the existing value.
+
+```ts
+type RootJailDetectOptions = {
+  minScore?: number;              // default 40 — score at/above which compromised=true
+  timeoutMs?: number;             // default 400 — total detection budget
+  includeEvidence?: boolean;      // default false — attach redacted evidence strings
+  treatDebuggerAsCompromise?: boolean; // default false
+  enablePlayIntegrity?: boolean;  // default false
 };
 ```
 
-------------------------------------------------------------------------
+### Legacy boolean API
 
-# Advanced Usage
+These remain for backwards compatibility. They are thin wrappers over
+`checkDetailed()` and preserve the historical error semantics:
+`isDeviceCompromised()` rethrows native errors; the others log and return a safe
+fallback.
 
-## Get Detection Reasons
+| Function | Resolves to | Safe fallback |
+| --- | --- | --- |
+| `isDeviceCompromised()` | `result.compromised` | rethrows |
+| `isEmulator()` | platform emulator/simulator signal | `false` |
+| `isDebuggerAttached()` | `result.debuggerDetected` | `false` |
+| `getDetectionReasons()` | derived from signal ids + redacted evidence | `[]` |
 
-Retrieve detailed detection reasons.
+### Security watchdog
 
-``` typescript
-const reasons = await RootJailDetect.getDetectionReasons();
-console.log(reasons);
-```
+```ts
+import { startSecurityWatchdog, stopSecurityWatchdog } from '@psync/anti-jailbreak';
 
-Example output:
-
-    [
-     "Frida instrumentation detected",
-     "Debugger attached",
-     "Root management app detected"
-    ]
-
-------------------------------------------------------------------------
-
-## Enable Security Watchdog
-
-``` typescript
-RootJailDetect.startSecurityWatchdog({
-  interval: 3000,
-  protectionMode: "TERMINATE"
+startSecurityWatchdog({
+  intervalMs: 5000,          // milliseconds; legacy `interval` is accepted as an alias
+  protectionMode: 'LOG_ONLY', // 'LOG_ONLY' | 'THROW_EXCEPTION' | 'TERMINATE'
 });
+
+stopSecurityWatchdog();
 ```
 
-Stop watchdog:
+The watchdog is a separate `SecurityWatchdog` HybridObject that consumes
+`checkDetailed()` with the configured threshold on each tick. It does not
+duplicate detection logic.
 
-``` typescript
-RootJailDetect.stopSecurityWatchdog();
+| Mode | Behavior |
+| --- | --- |
+| `LOG_ONLY` | Logs detection events. Safe for testing. |
+| `THROW_EXCEPTION` | Throws a runtime exception when the threshold is exceeded. |
+| `TERMINATE` | Terminates the application. **Destructive — do not use in tests.** |
+
+### Result types
+
+```ts
+type Severity = 'low' | 'medium' | 'high';
+type Confidence = 'low' | 'medium' | 'high';
+
+interface DetectionSignal {
+  id: string;            // stable, versioned identifier (see signal catalog)
+  severity: Severity;
+  score: number;         // weight contributed to the total
+  evidence?: string;     // only when includeEvidence is enabled; redacted
+  unavailable?: boolean; // check could not run — NOT evidence of compromise
+}
+
+interface DeviceRiskResult {
+  platform: 'android' | 'ios';
+  compromised: boolean;
+  score: number;         // 0–100, clamped
+  confidence: Confidence;
+  signals: DetectionSignal[];
+  debuggerDetected: boolean;
+  elapsedMs: number;
+  partial: boolean;      // true when the budget cut off remaining checks
+}
 ```
 
-------------------------------------------------------------------------
+---
 
-# API Reference
+## Signal catalog
 
-## isDeviceCompromised()
+Signal ids are part of the public contract: they never change once published
+(weights may be tuned between versions). Each id maps to a default severity and
+score weight.
 
-Returns whether device is rooted or jailbroken.
+| Severity | Signal id | Score | Description |
+| --- | --- | ---: | --- |
+| high | `android.mount.magisk` | 35 | Magisk/KSU/APatch overlay in mount metadata |
+| high | `android.maps.zygisk` | 30 | Zygisk library mapped in memory |
+| high | `android.maps.lsposed` | 30 | LSPosed/Xposed library mapped in memory |
+| high | `android.maps.frida` | 30 | Frida agent/artifact mapped in memory |
+| high | `android.maps.riru` | 30 | Riru library mapped in memory |
+| high | `android.selinux.permissive` | 25 | SELinux not enforcing on a production device |
+| medium | `android.root_manager.dir` | 20 | Root-manager data/app directory accessible |
+| medium | `android.bootloader.unlocked` | 20 | Verified boot reports unlocked/orange state |
+| medium | `android.emulator` | 20 | Strong emulator indicators |
+| low | `android.su.binary` | 10 | `su` binary at a conventional location |
+| low | `android.build.test_keys` | 10 | `ro.build.tags` reports `test-keys` |
+| low | `android.mount.overlay` | 10 | Hidden overlay/bind-mount content |
+| informational | `android.debugger.tracerpid` | 0 | `TracerPid` nonzero (diagnostic; see below) |
 
-``` typescript
-const compromised = await RootJailDetect.isDeviceCompromised();
+> **Debugger semantics:** `debuggerDetected` is reported separately and does
+> **not** affect `compromised` by default. Set `treatDebuggerAsCompromise: true`
+> in `configure()` to fold it into the compromise decision. iOS signals
+> (`ios.simulator` and others) land in PR 3.
+
+`compromised` is true when the aggregated score meets the configured `minScore`,
+or when the caller opts the debugger flag into the decision.
+
+---
+
+## Example app
+
+`example/` contains a React Native app that consumes the local library and
+renders the score, confidence, every fired signal, and the derived booleans.
+It is the primary integration-test surface.
+
+```sh
+bun install --frozen-lockfile
+bun run example android   # or: bun run example ios
 ```
 
-------------------------------------------------------------------------
+---
 
-## isEmulator()
+## Platform support
 
-Detects emulator (Android) or simulator (iOS).
+- **Android:** Kotlin `2.0.21`, min SDK 24, compile/target SDK 36, NDK 27+.
+- **iOS:** minimum version supplied by React Native's `min_ios_version_supported`,
+  Xcode 16.4+, Swift 5.9+, C++20.
+- **React Native:** 0.83+ (New Architecture only).
 
-``` typescript
-const emulator = await RootJailDetect.isEmulator();
-```
+### Detection coverage
 
-------------------------------------------------------------------------
+**Android (PR 2):** `/proc/self/maps` hook scanning (Zygisk/LSPosed/Frida/Riru),
+`/proc/self/mountinfo` + `/proc/self/mounts` root-framework overlays, SELinux
+enforcement state, root-manager directory and `su` binary probes, build-tag and
+verified-boot properties, and `TracerPid` as an informational debugger signal.
 
-## isDebuggerAttached()
+**iOS (PR 3, in progress):** sandbox-boundary probes, `_dyld` loaded-image
+inspection, URL-scheme checks, and `sysctl` debugger state.
 
-Detects whether a debugger is attached.
+**Play Integrity (future):** optional client-side token acquisition behind
+`enablePlayIntegrity`; the token must be verified by your backend with Google
+and bound to a short-lived server-issued decision.
 
-``` typescript
-const debug = await RootJailDetect.isDebuggerAttached();
-```
+---
 
-------------------------------------------------------------------------
+## Security limitations
 
-## getDetectionReasons()
+- **Not foolproof.** Determined attackers with sufficient capability can hide
+  root/jailbreak and hook these checks. Treat absence of signals as "no evidence
+  found", not as proof of a clean device.
+- **Client booleans are not authoritative.** Never gate sensitive actions solely
+  on a client-reported score or signal list. Use server-side attestation and
+  short-lived session decisions.
+- **False positives are possible.** `test-keys`, unlocked bootloaders, and
+  permissive SELinux occur on legitimate custom ROMs and developer devices.
+  Tune `minScore` and review `signals` before blocking users.
+- **Heuristics evolve.** Root frameworks update their hiding techniques; keep
+  the library updated and contribute observed signals to the device matrix.
 
-Returns array of human‑readable security warnings.
+---
 
-``` typescript
-const reasons = await RootJailDetect.getDetectionReasons();
-```
+## Contributing
 
-------------------------------------------------------------------------
+PRs are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow and
+conventional-commit policy. Keep PRs small and focused, and do not fix unrelated
+detection heuristics while implementing a scoped change.
 
-# Comprehensive Security Checks
+---
 
-## Android
+## License
 
-Root detection techniques include:
-
--   Root management app detection
--   su binary detection
--   writable system partition checks
--   dangerous system properties
--   root cloaking files
--   build tag inspection
-
-### Emulator Detection
-
--   Build fingerprint analysis
--   emulator system properties
--   QEMU file detection
-
-### Debugger Detection
-
--   Java debugger detection
--   ptrace detection
--   TracerPid inspection
-
-### Runtime Instrumentation Detection
-
--   runtime thread detection
--   memory map scanning
--   runtime symbol detection
-
-------------------------------------------------------------------------
-
-## iOS
-
-### Jailbreak Detection
-
--   Cydia / Sileo / Zebra detection
--   MobileSubstrate detection
--   suspicious filesystem artifacts
--   sandbox escape attempts
-
-### Debugger Detection
-
--   sysctl inspection
--   ptrace anti‑debug
-
-### Runtime Instrumentation Detection
-
--   injected dylib detection
--   suspicious thread detection
--   runtime symbol detection
-
-------------------------------------------------------------------------
-
-# Example Screenshots
-
-## Android Emulator
-
-![Android Emulator](.github/media/Emulator%20Android.png)
-
-## Android Real Device
-
-![Android Real Device](.github/media/Real%20Device%20Android.png)
-
-## iOS Real Device
-
-![iOS Real Device](.github/media/Real%20Device%20iOS.png)
-
-## iOS Simulator
-
-![iOS Simulator](.github/media/Simulator%20iOS.png)
-
-------------------------------------------------------------------------
-
-# Use Cases
-
-This module is useful for:
-
--   Banking apps
--   Payment gateways
--   Gaming anti‑cheat
--   Enterprise security policies
--   VPN and security apps
-
-------------------------------------------------------------------------
-
-# Security Strength
-
-This module combines:
-
--   multiple detection heuristics
--   native runtime checks
--   debugger detection
--   instrumentation detection
--   watchdog runtime monitoring
-
-This layered approach significantly increases difficulty for attackers
-attempting to bypass checks.
-
-------------------------------------------------------------------------
-
-# Important Notes
-
-- **Not Foolproof:** Sophisticated root/jailbreak concealment tools may bypass detection
-- **Use as Part of Security Strategy:** Combine with other security measures (SSL pinning, code obfuscation, etc.)
-- **Graceful Degradation:** Consider UX - don't block legitimate users unnecessarily
-- **Regular Updates:** Root/jailbreak methods evolve; keep the library updated
-
-------------------------------------------------------------------------
-
-# Contributing
-
-PRs are welcome!
-
-1.  Fork the repo
-2.  Create a feature branch
-3.  Commit changes
-4.  Open a pull request
-
-------------------------------------------------------------------------
-
-# License
-
-MIT © Rushikesh Pandit
-
-Built with ❤️ for the React Native community.
+MIT © PSync

@@ -2,7 +2,7 @@
 
 ## Repository overview
 
-This repository contains `react-native-root-jail-detect`, a React Native **Nitro Module** that detects rooted Android devices, jailbroken iOS devices, emulators/simulators, debuggers, Frida/runtime instrumentation, and hooking frameworks. It exposes a scored, structured device-risk API plus a periodic native security watchdog.
+This repository contains `@psync/anti-jailbreak`, a React Native **Nitro Module** that detects rooted Android devices, jailbroken iOS devices, emulators/simulators, debuggers, Frida/runtime instrumentation, and hooking frameworks. It exposes a scored, structured device-risk API plus a periodic native security watchdog.
 
 The repository is a Bun workspace:
 
@@ -49,15 +49,20 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 
 ### Shared C++ core
 
-- `cpp/HybridRootJailDetect.hpp` / `.cpp` — shared C++ implementation of the root HybridObject. Owns resolved configuration and creates the watchdog. Stays as orchestration; detection helpers live in focused files.
-- `cpp/HybridSecurityWatchdog.hpp` / `.cpp` — shared C++ implementation of the watchdog HybridObject. Owns the background thread and lifecycle state and consumes `checkDetailed()` (no duplicated boolean logic).
+- `cpp/HybridRootJailDetect.hpp` / `.cpp` — shared C++ implementation of the root HybridObject. Owns resolved configuration and creates the watchdog. Stays as orchestration: resolves config, measures the total `timeoutMs` budget, delegates platform work to focused helper files, and aggregates signals into a `DeviceRiskResult`.
+- `cpp/HybridSecurityWatchdog.hpp` / `.cpp` — shared C++ implementation of the watchdog HybridObject. Owns the background thread and lifecycle state and consumes `checkDetailed()` (no duplicated boolean logic). PR 1 ships a stub; the real background loop lands in PR 3.
+- `cpp/SignalCatalog.hpp` / `.cpp` — stable, public signal ids (`SignalId::*`) and their default severity/score weights, plus `lookupSignal(id)`. Signal ids are part of the public contract: callers and backends use them to reason about which checks fired, so they must never be renamed or reused for a different meaning once published. Weights mirror the risk table in `PLAN.md`.
+- `cpp/Scoring.hpp` — header-only, side-effect-free aggregation (`aggregateSignals`) of fired signals into a clamped 0–100 score and a confidence level, with per-id deduplication so equivalent evidence is not double-counted.
+- `cpp/ProcParsers.hpp` / `.cpp` — pure, side-effect-free parsing of Linux `/proc` text formats (`/proc/self/maps`, `/proc/self/mountinfo`, `/proc/self/mounts`, `/proc/self/status`, `/sys/fs/selinux/enforce`) used by the Android path. Every parser takes already-read file content and returns structured findings, so the logic is deterministic and unit-testable with fixture strings. `readFileIfExists` is the single impure entry point and never turns an unreadable file into a detection.
+- `cpp/AndroidProbes.hpp` / `.cpp` — Android-specific probes that require platform APIs: filesystem existence checks for root-manager directories and `su` binaries (`stat(2)`), and reads of Android system properties (`__system_property_get`) for verified-boot and build-tag signals. Compiled under `#if defined(__ANDROID__)`; outside Android they return an empty set so the same files are safe in a host-side unit-test build.
+- `cpp/AndroidChecks.hpp` / `.cpp` — orchestrates the Android scored baseline (PLAN.md Phase 1): reads the relevant `/proc`/`/sys` files, runs the pure parsers, probes paths/properties, and folds everything into a deduplicated list of `DetectionSignal`s plus the informational `debuggerDetected` flag. This is the only place that knows the full set of Android checks; `HybridRootJailDetect.cpp` calls it under `#if defined(__ANDROID__)`.
 
 ### Android
 
-- `android/CMakeLists.txt` — builds the `RootJailDetect` shared library and includes the generated autolinking cmake.
+- `android/CMakeLists.txt` — builds the `RootJailDetect` shared library, compiles the hand-written C++ HybridObjects and the PR 2 detection helpers (`SignalCatalog`, `ProcParsers`, `AndroidProbes`, `AndroidChecks`), and includes the generated autolinking cmake.
 - `android/build.gradle` — Android library config; applies the generated Nitro autolinking gradle and points `externalNativeBuild` at `CMakeLists.txt`.
 - `android/src/main/AndroidManifest.xml` — library manifest.
-- (Future, PR 2) thin Kotlin edge HybridObjects under `android/src/main/java/...` for PackageManager, system properties, and Play Integrity, called from the C++ core through their generated spec API.
+- (Future, PR 2b) thin Kotlin edge HybridObjects under `android/src/main/java/...` for PackageManager and Play Integrity, called from the C++ core through their generated spec API. Build-property reads and filesystem probes are already in the shared C++ core; Kotlin adds package enumeration and Play Integrity token acquisition.
 
 ### iOS
 
@@ -98,6 +103,8 @@ Consumer
 ```
 
 `checkDetailed()` is the primary, structured API and returns a `DeviceRiskResult` (score, signals, confidence, debugger state, partial flag). The legacy boolean wrappers are derived from it so all detection logic lives in one place.
+
+**Implementation status (post-PR 2):** the Android scored baseline (PLAN.md Phase 1) is implemented in shared C++ — `/proc/self/maps`, `/proc/self/mountinfo` + `/proc/self/mounts`, `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties, and `TracerPid` as informational. iOS Phase 1 checks and the real watchdog background thread land in PR 3. The PR 2 Android C++ baseline is **not yet native-build-validated** — a Gradle build with the NDK must be run on macOS/Linux/WSL before merging, as the C++ cannot be compiled on a Windows host.
 
 `isDeviceCompromised()` resolves to `result.compromised` (score >= configured `minScore`). It is intentionally broader than literal root/jailbreak detection — on both platforms it also includes selected Frida, hook, and low-level anti-debug/injection checks. Do not narrow or broaden this semantic accidentally; update documentation and both platforms when changing it.
 
@@ -206,7 +213,7 @@ Follow the style already used in each language and keep changes focused.
 ### C++ (shared core)
 
 - The root and watchdog HybridObjects are implemented in shared C++ (`{ ios: 'c++'; android: 'c++' }`) so scoring, the signal catalog, `/proc` parsing (Android), pattern matching, and TracerPid checks are shared across platforms.
-- Keep `cpp/HybridRootJailDetect.cpp` as orchestration; extract detection helpers into focused files (e.g. `ProcParsers.cpp`, `PatternMatcher.cpp`) as complexity grows.
+- Keep `cpp/HybridRootJailDetect.cpp` as orchestration; detection helpers live in focused files (`SignalCatalog`, `Scoring`, `ProcParsers`, `AndroidProbes`, `AndroidChecks`). Add new helpers as separate files rather than growing the HybridObject implementation.
 - Use RAII where possible and close native resources (`FILE*`, `dlopen`, sockets, Mach memory) on all returns.
 - Avoid undefined behavior from architecture-specific instruction assumptions; validate checks on every supported ABI.
 - The C++ core can call Swift/Kotlin edge HybridObjects through their generated C++ spec API. Verify codegen support before assuming the inverse direction (Swift/Kotlin consuming C++-backed objects).
@@ -328,7 +335,22 @@ The Jest suite covers the wrapper layer (`src/__tests__/index.test.tsx`). When c
 - Verify `isDeviceCompromised()` rejects while fallback APIs return their documented fallback values.
 - Reset mocks and `Platform.OS` changes between tests.
 
-Native heuristics are difficult to validate with unit tests alone. Prefer extracting deterministic parsing/matching logic into pure functions where feasible, then test those functions natively. Keep device-level verification through the example app for filesystem, process, debugger, socket, and runtime-instrumentation behavior.
+Native heuristics are difficult to validate with unit tests alone. Prefer extracting deterministic parsing/matching logic into pure functions where feasible, then test those functions natively. The PR 2 Android baseline follows this split: `cpp/ProcParsers.*` (pure `/proc`/`/sys` parsing), `cpp/Scoring.hpp` (pure aggregation), and `cpp/SignalCatalog.*` (id → weight lookup) are deterministic and fixture-testable; `cpp/AndroidProbes.*` and `cpp/AndroidChecks.*` carry the platform I/O. Keep device-level verification through the example app for filesystem, process, debugger, socket, and runtime-instrumentation behavior.
+
+## Package publishing
+
+This package is published as `@psync/anti-jailbreak` on npmjs.org (scoped
+package, public access). To publish:
+
+```sh
+bun run release   # release-it handles version bump, tag, and npm publish
+```
+
+The `publishConfig` in `package.json` sets `access: public` (required for
+scoped packages). Native files in `cpp/`, `android/`, `ios/`, and
+`nitrogen/generated/` are included in the shipped package via the `files`
+field. The `.podspec` at the root is picked up by React Native CocoaPods
+autolinking.
 
 ## Documentation and contribution requirements
 

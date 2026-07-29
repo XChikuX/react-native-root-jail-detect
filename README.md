@@ -52,7 +52,7 @@ startSecurityWatchdog({ intervalMs: 5000, protectionMode: 'LOG_ONLY' });
 - **`isEmulator(): Promise<boolean>`** — Returns `true` if running in an emulator/simulator.
 - **`isDebuggerAttached(): Promise<boolean>`** — Returns `true` if a debugger is attached.
 - **`getDetectionReasons(): Promise<string[]>`** — Returns human-readable reasons for fired signals.
-- **`startSecurityWatchdog(options): void`** — Periodically runs checks in background (`'LOG_ONLY' | 'THROW_EXCEPTION' | 'TERMINATE'`).
+- **`startSecurityWatchdog(options): void`** — Periodically runs checks in background. `protectionMode` is `'LOG_ONLY' | 'THROW_EXCEPTION' | 'TERMINATE'`. Note: `THROW_EXCEPTION` is demoted to a logged warning on the background thread (it cannot throw into the JS runtime); `TERMINATE` ends the process. To react in app code, poll `checkDetailed()` / `isDeviceCompromised()` from JS.
 - **`stopSecurityWatchdog(): void`** — Stops the security watchdog thread.
 
 ---

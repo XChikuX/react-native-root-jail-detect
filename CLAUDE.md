@@ -51,25 +51,27 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 
 ### Shared C++ core
 
-- `cpp/HybridRootJailDetect.hpp` / `.cpp` — shared C++ implementation of the root HybridObject. Owns resolved configuration and creates the watchdog. Stays as orchestration: resolves config, measures the total `timeoutMs` budget, delegates platform work to focused helper files, and aggregates signals into a `DeviceRiskResult`.
-- `cpp/HybridSecurityWatchdog.hpp` / `.cpp` — shared C++ implementation of the watchdog HybridObject. Owns the background thread and lifecycle state and consumes `checkDetailed()` (no duplicated boolean logic). PR 1 ships a stub; the real background loop lands in PR 3.
+- `cpp/HybridRootJailDetect.hpp` / `.cpp` — shared C++ implementation of the root HybridObject. Owns resolved configuration and lazily creates the watchdog. Stays as orchestration: resolves config, measures the total `timeoutMs` budget, delegates platform work to focused helper files, and aggregates signals into a `DeviceRiskResult`.
+- `cpp/HybridSecurityWatchdog.hpp` / `.cpp` — shared C++ implementation of the watchdog HybridObject. Owns the background thread and lifecycle state and consumes `checkDetailed()` (no duplicated boolean logic). Serializes `start()`/`stop()` transitions with a dedicated mutex so two concurrent Nitro-worker-thread invocations cannot spawn duplicate background loops; `run()` only takes the lifecycle mutex during its timed sleep so the join in `start()`/`stop()` cannot deadlock.
+- `cpp/DeviceRiskAssessment.hpp` / `.cpp` — the blocking assessment entry point shared by the root API and the watchdog. Picks the platform-specific check runner under `#if defined(__ANDROID__)`, computes `elapsedMs`, runs the aggregator, and folds the result together with `treatDebuggerAsCompromise`. Keeping this path singular prevents the watchdog's compromise decision from drifting from `checkDetailed()`.
+- `cpp/IOSChecks.hpp` / `.cpp` — conservative iOS-only probes (jailbreak artifact paths, `_dyld` loaded-image scan, `sysctl` debugger state, simulator flag). Body compiled under `#if defined(__APPLE__)` so Android and host builds stay safe. Routes every signal through `SignalCatalog::lookupSignal()` so weights and severities never drift from the catalog.
 - `cpp/SignalCatalog.hpp` / `.cpp` — stable, public signal ids (`SignalId::*`) and their default severity/score weights, plus `lookupSignal(id)`. Signal ids are part of the public contract: callers and backends use them to reason about which checks fired, so they must never be renamed or reused for a different meaning once published. Weights mirror the risk table in `PLAN.md`.
 - `cpp/Scoring.hpp` — header-only, side-effect-free aggregation (`aggregateSignals`) of fired signals into a clamped 0–100 score and a confidence level, with per-id deduplication so equivalent evidence is not double-counted.
 - `cpp/ProcParsers.hpp` / `.cpp` — pure, side-effect-free parsing of Linux `/proc` text formats (`/proc/self/maps`, `/proc/self/mountinfo`, `/proc/self/mounts`, `/proc/self/status`, `/sys/fs/selinux/enforce`) used by the Android path. Every parser takes already-read file content and returns structured findings, so the logic is deterministic and unit-testable with fixture strings. `readFileIfExists` is the single impure entry point and never turns an unreadable file into a detection.
 - `cpp/AndroidProbes.hpp` / `.cpp` — Android-specific probes that require platform APIs: filesystem existence checks for root-manager directories and `su` binaries (`stat(2)`), and reads of Android system properties (`__system_property_get`) for verified-boot and build-tag signals. Compiled under `#if defined(__ANDROID__)`; outside Android they return an empty set so the same files are safe in a host-side unit-test build.
-- `cpp/AndroidChecks.hpp` / `.cpp` — orchestrates the Android scored baseline (PLAN.md Phase 1): reads the relevant `/proc`/`/sys` files, runs the pure parsers, probes paths/properties, and folds everything into a deduplicated list of `DetectionSignal`s plus the informational `debuggerDetected` flag. This is the only place that knows the full set of Android checks; `HybridRootJailDetect.cpp` calls it under `#if defined(__ANDROID__)`.
+- `cpp/AndroidChecks.hpp` / `.cpp` — orchestrates the Android scored baseline (PLAN.md Phase 1): reads the relevant `/proc`/`/sys` files, runs the pure parsers, probes paths/properties, and folds everything into a deduplicated list of `DetectionSignal`s plus the informational `debuggerDetected` flag. This is the only place that knows the full set of Android checks; `DeviceRiskAssessment.cpp` calls it under `#if defined(__ANDROID__)`.
 
 ### Android
 
-- `android/CMakeLists.txt` — builds the `RootJailDetect` shared library, compiles the hand-written C++ HybridObjects and the PR 2 detection helpers (`SignalCatalog`, `ProcParsers`, `AndroidProbes`, `AndroidChecks`), and includes the generated autolinking cmake.
+- `android/CMakeLists.txt` — builds the `RootJailDetect` shared library, compiles the hand-written C++ HybridObjects and the detection helpers (`SignalCatalog`, `ProcParsers`, `AndroidProbes`, `AndroidChecks`, `IOSChecks`), and includes the generated autolinking cmake. `IOSChecks` is included so the same file compiles on both platforms; its body is empty when `__APPLE__` is not defined.
 - `android/build.gradle` — Android library config; applies the generated Nitro autolinking gradle and points `externalNativeBuild` at `CMakeLists.txt`.
-- `android/src/main/AndroidManifest.xml` — library manifest.
-- (Future, PR 2b) thin Kotlin edge HybridObjects under `android/src/main/java/...` for PackageManager and Play Integrity, called from the C++ core through their generated spec API. Build-property reads and filesystem probes are already in the shared C++ core; Kotlin adds package enumeration and Play Integrity token acquisition.
+- `android/src/main/AndroidManifest.xml` — library manifest declaring the narrow `<queries>` set used by the Expo config plugin (`app.plugin.js`).
+- Kotlin edge HybridObjects for PackageManager enumeration and Play Integrity token acquisition remain intentionally deferred — Play Integrity is server-attestation work and `RootJailDetectOptions.enablePlayIntegrity` is documented as such.
 
 ### iOS
 
-- `ios/` — reserved for thin Swift edge HybridObjects (PR 3: sandbox, `_dyld`, URL schemes, debugger state).
-- `RootJailDetect.podspec` — CocoaPods spec; uses `add_nitrogen_files(s)` to pull in generated specs/bridges and the `NitroModules` dependency.
+- `ios/` — currently empty. iOS detection lives in the shared C++ core at `cpp/IOSChecks.cpp` so the simulator/device branching, signal catalog, and scoring stay in one place. The directory is reserved for any future Swift edge HybridObjects (for example, additional URL-scheme or `_dyld` probes) that need to be added behind the C++ core.
+- `RootJailDetect.podspec` — CocoaPods spec; pulls in generated specs/bridges via `nitrogen/generated/ios/RootJailDetect+autolinking.rb` and the shared C++ sources from `cpp/**/*.{hpp,cpp}`.
 
 ### Generated Nitro code (committed, never hand-edited)
 
@@ -100,13 +102,12 @@ Consumer
   -> src/wrappers.ts (legacy boolean API over checkDetailed)
   -> Nitro HybridObjects (nitrogen codegen)
     -> Shared C++ core: scoring, signal catalog, pattern matching, /proc parsing (Android)
-    -> Android edge: Kotlin HybridObjects (PackageManager, system properties, Play Integrity)
-    -> iOS edge: Swift HybridObjects (sandbox, loaded images, URL schemes, debugger state)
+    -> Shared C++ platform runner: AndroidChecks.cpp on Android, IOSChecks.cpp on iOS
 ```
 
 `checkDetailed()` is the primary, structured API and returns a `DeviceRiskResult` (score, signals, confidence, debugger state, partial flag). The legacy boolean wrappers are derived from it so all detection logic lives in one place.
 
-**Implementation status (post-PR 2):** the Android scored baseline (PLAN.md Phase 1) is implemented in shared C++ — `/proc/self/maps`, `/proc/self/mountinfo` + `/proc/self/mounts`, `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties, and `TracerPid` as informational. iOS Phase 1 checks and the real watchdog background thread land in PR 3. The C++ is not Windows-compilable — a Gradle build with the NDK must be run on macOS/Linux/WSL for native validation before publishing.
+**Implementation status:** the Android scored baseline (PLAN.md Phase 1) lives in shared C++ — `/proc/self/maps`, `/proc/self/mountinfo` + `/proc/self/mounts`, `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties, runtime instrumentation (Frida cmdline + local socket), and `TracerPid` as informational. iOS Phase 1 checks (jailbreak artifact paths, `_dyld` loaded-image scan, `sysctl` debugger state, simulator flag) live in shared C++ at `cpp/IOSChecks.cpp`; the `ios/` directory is reserved for future Swift edge HybridObjects and is currently empty. The security watchdog has its real background loop in `cpp/HybridSecurityWatchdog.cpp`. The C++ is not Windows-compilable — a Gradle build with the NDK must be run on macOS/Linux/WSL for native validation before publishing.
 
 `isDeviceCompromised()` resolves to `result.compromised` (score >= configured `minScore`). It is intentionally broader than literal root/jailbreak detection — on both platforms it also includes selected Frida, hook, and low-level anti-debug/injection checks. Do not narrow or broaden this semantic accidentally; update documentation and both platforms when changing it.
 
@@ -179,7 +180,7 @@ The watchdog owns long-lived mutable state and a background thread. Changes here
 - Make start/stop and shared state thread-safe when modifying lifecycle behavior.
 - Do not hold locks while running detection checks or threat actions.
 - Do not silently swallow unexpected exceptions. Existing behavior does this in places; avoid expanding that pattern.
-- `TERMINATE` and iOS `THROW_EXCEPTION`/`fatalError` are destructive. Do not exercise them in automated tests or routine manual validation. Use `LOG_ONLY` for safe watchdog testing.
+- `TERMINATE` is destructive (it ends the host process via `std::terminate()`). `THROW_EXCEPTION` fired from the watchdog background thread is demoted to a logged warning because a background thread cannot safely throw into the JS runtime; it is retained for API completeness. Do not exercise `TERMINATE` in automated tests or routine manual validation. Use `LOG_ONLY` for safe watchdog testing.
 - Verify repeated `start()`, `stop()`, and restart behavior whenever changing lifecycle code.
 
 ## Coding style

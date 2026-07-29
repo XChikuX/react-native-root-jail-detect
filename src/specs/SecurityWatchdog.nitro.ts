@@ -12,9 +12,11 @@ import type { SecurityWatchdogOptions } from './SecurityWatchdogOptions';
  * detection logic.
  *
  * Repeated `start()`, `stop()`, and restart must all behave correctly.
- * Destructive {@linkcode ProtectionMode}s (`THROW_EXCEPTION`, `TERMINATE`)
- * must never be exercised in automated tests or routine manual validation;
- * use `LOG_ONLY` for safe testing.
+ * `TERMINATE` is destructive (it ends the host process). `THROW_EXCEPTION` is
+ * demoted to a logged warning on the background thread (it cannot synchronously
+ * throw into the JS runtime); use `LOG_ONLY` for safe testing and poll
+ * {@linkcode RootJailDetect.checkDetailed} from JS if you need to react in app
+ * code.
  *
  * @see {@linkcode RootJailDetect.getWatchdog}
  */
@@ -27,6 +29,8 @@ export interface SecurityWatchdog
    *
    * The interval and protection mode come from
    * {@linkcode SecurityWatchdogOptions}; their defaults are documented there.
+   * Note that `THROW_EXCEPTION` fired from the background thread is demoted to a
+   * logged warning — see {@linkcode ProtectionMode} for details.
    */
   start(options: SecurityWatchdogOptions): Promise<void>;
   /**

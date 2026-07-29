@@ -106,9 +106,10 @@ export async function isEmulator(): Promise<boolean> {
   try {
     const result = await getRoot().checkDetailed();
     // The detailed result is the single source of truth; emulator/simulator
-    // state is reflected through a platform-prefixed signal id. Until the
-    // native emulator signals land (PR 2/PR 3), this returns `false` on a
-    // clean stub result, matching the documented safe fallback.
+    // state is reflected through a platform-prefixed signal id emitted by the
+    // native detectors. Matching by `startsWith` so any future
+    // `android.emulator.*` / `ios.simulator.*` refinement is picked up here
+    // without changing the wrapper.
     return Boolean(
       result.signals.some(
         (signal) =>

@@ -9,7 +9,11 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
-import { checkDetailed, type DeviceRiskResult } from '@psync/anti-jailbreak';
+import {
+  checkDetailed,
+  getDetectionReasons,
+  type DeviceRiskResult,
+} from '@psync/anti-jailbreak';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 function App() {
@@ -29,22 +33,19 @@ function App() {
       setDetailed(result);
 
       setIsCompromised(result.compromised);
+      // Emulator/simulator detection matches the public `isEmulator()` wrapper:
+      // any platform-prefixed `*.emulator*` / `*.simulator*` signal id wins.
       setIsEmu(
         result.signals.some(
           (signal) =>
-            signal.id === 'android.emulator' || signal.id === 'ios.simulator'
+            signal.id.startsWith('android.emulator') ||
+            signal.id.startsWith('ios.simulator')
         )
       );
       setIsDebugger(result.debuggerDetected);
-      setDetectionReasons(
-        Array.from(
-          new Set(
-            result.signals
-              .filter((signal) => signal.unavailable !== true)
-              .map((signal) => signal.evidence ?? signal.id)
-          )
-        )
-      );
+      // Use the public wrapper so reasons stay human-readable and stay in sync
+      // with the library's signal-id -> text catalog (avoids showing raw ids).
+      setDetectionReasons(await getDetectionReasons());
 
       if (result.compromised) {
         Alert.alert(

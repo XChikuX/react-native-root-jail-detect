@@ -56,6 +56,8 @@ namespace margelo::nitro::rootjaildetect {
     inline constexpr std::string_view ANDROID_BUILD_TEST_KEYS = "android.build.test_keys";
     /// Hidden overlay/bind-mount content surfaced through namespace comparison.
     inline constexpr std::string_view ANDROID_MOUNT_OVERLAY = "android.mount.overlay";
+
+    // ---- Android: high severity (runtime instrumentation) ----
     /// Frida or other instrumentation artifact in the process command line.
     inline constexpr std::string_view ANDROID_CMDLINE_INSTRUMENTATION = "android.cmdline.instrumentation";
     /// Local instrumentation socket exposed by the current process namespace.

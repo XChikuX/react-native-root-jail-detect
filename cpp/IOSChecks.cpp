@@ -23,15 +23,34 @@ namespace margelo::nitro::rootjaildetect {
 
   namespace {
 
-    DetectionSignal signal(std::string_view id, Severity severity, double score,
-                           std::string_view evidence, bool includeEvidence) {
-      return DetectionSignal(std::string(id), severity, score,
-                             includeEvidence ? std::optional<std::string>(std::string(evidence))
-                                             : std::nullopt,
-                             std::nullopt);
+    // Build a `DetectionSignal` from a signal id by looking up the catalog
+    // weight/severity. This is the same path AndroidChecks uses so that
+    // changes to the signal catalog (id renames, weight tuning) flow through
+    // to iOS without duplicating the literal values here. If the id is not in
+    // the catalog (which should never happen for ids produced by this file),
+    // we emit a zero-weight placeholder so the result stays well-formed.
+    DetectionSignal buildSignal(std::string_view id, const std::string& evidence,
+                                bool includeEvidence) noexcept {
+      std::optional<SignalSpec> spec = lookupSignal(id);
+      if (!spec.has_value()) {
+        return DetectionSignal(
+          std::string(id),
+          Severity::LOW,
+          0.0,
+          includeEvidence ? std::optional<std::string>(evidence) : std::nullopt,
+          std::nullopt
+        );
+      }
+      return DetectionSignal(
+        std::string(spec->id),
+        spec->severity,
+        spec->score,
+        includeEvidence ? std::optional<std::string>(evidence) : std::nullopt,
+        std::nullopt
+      );
     }
 
-    DetectionSignal unavailable(std::string_view id) {
+    DetectionSignal unavailableSignal(std::string_view id) noexcept {
       return DetectionSignal(std::string(id), Severity::LOW, 0.0, std::nullopt, true);
     }
 
@@ -46,13 +65,12 @@ namespace margelo::nitro::rootjaildetect {
     IOSCheckResult result;
 #if defined(__APPLE__)
 #if TARGET_OS_SIMULATOR
-    result.signals.push_back(signal(SignalId::IOS_SIMULATOR, Severity::MEDIUM, 20.0,
-                                    "ios-simulator", includeEvidence));
+    result.signals.push_back(buildSignal(SignalId::IOS_SIMULATOR, "ios-simulator", includeEvidence));
     return result;
 #else
     if (expired(deadline)) {
       result.partial = true;
-      result.signals.push_back(unavailable("ios.check.jailbreak"));
+      result.signals.push_back(unavailableSignal(SignalId::IOS_CHECK_JAILBREAK));
       return result;
     }
 
@@ -65,15 +83,16 @@ namespace margelo::nitro::rootjaildetect {
     for (const char* path : kJailbreakPaths) {
       struct stat status {};
       if (::stat(path, &status) == 0) {
-        result.signals.push_back(signal(SignalId::IOS_JAILBREAK_ARTIFACT, Severity::MEDIUM, 20.0,
-                                        "known-jailbreak-artifact", includeEvidence));
+        result.signals.push_back(
+          buildSignal(SignalId::IOS_JAILBREAK_ARTIFACT, "known-jailbreak-artifact", includeEvidence)
+        );
         break;
       }
     }
 
     if (expired(deadline)) {
       result.partial = true;
-      result.signals.push_back(unavailable("ios.check.dyld"));
+      result.signals.push_back(unavailableSignal(SignalId::IOS_CHECK_DYLD));
       return result;
     }
 
@@ -85,15 +104,16 @@ namespace margelo::nitro::rootjaildetect {
       const std::string path(image);
       if (path.find("MobileSubstrate") != std::string::npos || path.find("Substitute") != std::string::npos ||
           path.find("Frida") != std::string::npos || path.find("libhooker") != std::string::npos) {
-        result.signals.push_back(signal(SignalId::IOS_DYLD_HOOK, Severity::HIGH, 30.0,
-                                        "suspicious-loaded-image", includeEvidence));
+        result.signals.push_back(
+          buildSignal(SignalId::IOS_DYLD_HOOK, "suspicious-loaded-image", includeEvidence)
+        );
         break;
       }
     }
 
     if (expired(deadline)) {
       result.partial = true;
-      result.signals.push_back(unavailable("ios.check.debugger"));
+      result.signals.push_back(unavailableSignal(SignalId::IOS_CHECK_DEBUGGER));
       return result;
     }
 
@@ -103,8 +123,7 @@ namespace margelo::nitro::rootjaildetect {
     if (::sysctl(mib, 4, &process, &size, nullptr, 0) == 0 &&
         (process.kp_proc.p_flag & P_TRACED) != 0) {
       result.debuggerDetected = true;
-      result.signals.push_back(signal(SignalId::IOS_DEBUGGER_SYSCTL, Severity::LOW, 0.0,
-                                      "sysctl-traced", includeEvidence));
+      result.signals.push_back(buildSignal(SignalId::IOS_DEBUGGER_SYSCTL, "sysctl-traced", includeEvidence));
     }
 #endif
 #else

@@ -198,7 +198,7 @@ Split debugger status from jailbreak status immediately:
 
 ## Expo delivery
 
-1. Create a root-level `app.plugin.js` (with source under `plugin/src/` if it grows) to configure Android/iOS native project changes during `expo prebuild`.
+1. Keep the Expo config plugin at the root-level `app.plugin.js` (move it under `plugin/src/` only if it grows non-trivial) to configure Android/iOS native project changes during `expo prebuild`.
 2. Ensure the module works with EAS Build and a custom development client.
 3. Fail clearly in Expo Go with an actionable error: native checks require prebuild/custom client.
 4. Provide an Expo example app with development and release configuration examples.
@@ -217,18 +217,13 @@ src/
 cpp/                     # Shared C++ HybridObject implementations + detection core
 android/
   src/main/java/.../     # Thin Kotlin edge HybridObjects
-ios/                     # Thin Swift edge HybridObjects
+ios/                     # Reserved for thin Swift edge HybridObjects
 nitro.json               # Namespaces + autolinking entries
 nitrogen/generated/      # Codegen output; committed, never hand-edited
 app.plugin.js            # Expo config plugin entry
-plugin/src/              # Plugin source if non-trivial
 example/
   expo/
   react-native/
-docs/
-  DETECTION.md
-  EXPO.md
-  THREAT_MODEL.md
 e2e/
   matrix.md
   fixtures/
@@ -242,22 +237,13 @@ Migration notes:
 
 ## Documentation
 
-### `docs/DETECTION.md`
+All user-facing documentation lives in `README.md` as the single source of truth. It must cover:
 
-Document every public signal ID, severity, initial weight, supported platform, evidence-redaction policy, and known false-positive limitations. Do not publish implementation details that make bypassing individual checks trivial; publish enough to let adopters make safe policy decisions.
+- The full signal catalog: every public signal ID, severity, initial weight, supported platform, evidence-redaction policy, and known false-positive limitations. Do not publish implementation details that make bypassing individual checks trivial; publish enough to let adopters make safe policy decisions.
+- The threat model and policy guidance: client-side detection is bypassable; root detection should not be the only authorization control; server-side attestation, short-lived credentials, rate limits, telemetry, TLS pinning where appropriate, and step-up authentication provide layered protection; a rooted power user is not automatically malicious.
+- Expo delivery: installation, prebuild, custom dev client, EAS Build, Android manifest/package-visibility needs, Play Integrity setup, and troubleshooting.
 
-### `docs/THREAT_MODEL.md`
-
-State explicitly that:
-
-- Client-side detection is bypassable.
-- Root detection should not be the only authorization control.
-- Server-side attestation, short-lived credentials, rate limits, telemetry, TLS pinning where appropriate, and step-up authentication provide layered protection.
-- A rooted power user is not automatically malicious; product policy must balance fraud prevention and user access.
-
-### `docs/EXPO.md`
-
-Include installation, prebuild, custom dev client, EAS Build, Android manifest/package-visibility needs, Play Integrity setup, and troubleshooting.
+Keep `README.md` synchronized with the exported APIs, defaults, signal catalog, and security limitations whenever the public contract changes.
 
 ## Testing and acceptance criteria
 

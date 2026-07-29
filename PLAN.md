@@ -8,8 +8,6 @@ This is a **full Nitro migration targeting v2.0.0**: New Architecture only, one 
 
 The package was previously published as `react-native-root-jail-detect`. Version 2.0.0 is published under the `@psync/anti-jailbreak` name.
 
-
-
 ## Scope and principles
 
 - Treat root/jailbreak detection as risk assessment, not proof.
@@ -44,24 +42,26 @@ getDetectionReasons(): Promise<string[]> // derived from signal IDs
 
 Existing error semantics are preserved: `isDeviceCompromised()` rethrows native errors; the others log and return safe fallbacks. New convenience aliases `isDeviceRooted()` / `isDeviceJailbroken()` may be added, but the published names above are not renamed or removed in v2.
 
-### Add a detailed API
+### Primary structured API (shipped)
 
 ```ts
 export type Severity = 'low' | 'medium' | 'high';
+export type Confidence = 'low' | 'medium' | 'high';
+export type Platform = 'android' | 'ios';
 
 export type DetectionSignal = {
   id: string;
   severity: Severity;
   score: number;
-  evidence?: string; // Redacted, development/debug builds only.
+  evidence?: string; // Redacted; only when includeEvidence is enabled.
   unavailable?: boolean; // Check could not run; not a detection.
 };
 
 export type DeviceRiskResult = {
-  platform: 'android' | 'ios';
+  platform: Platform;
   compromised: boolean;
   score: number; // 0 to 100
-  confidence: 'low' | 'medium' | 'high';
+  confidence: Confidence;
   signals: DetectionSignal[];
   debuggerDetected: boolean;
   elapsedMs: number;
@@ -80,7 +80,7 @@ export function configure(options: RootJailDetectOptions): void;
 export function checkDetailed(): Promise<DeviceRiskResult>;
 ```
 
-Nitro codegen supports string-literal unions (`Severity`, `confidence`) and optional struct fields natively, so these types live in `src/specs/` as named types and are re-exported from `src/index.ts`.
+Nitro codegen supports string-literal unions and optional struct fields natively, so these types live in `src/specs/` as named types and are re-exported from `src/index.tsx`.
 
 ### Defaults
 
@@ -89,6 +89,49 @@ Nitro codegen supports string-literal unions (`Severity`, `confidence`) and opti
 - `includeEvidence`: false in release builds
 - `treatDebuggerAsCompromise`: false
 - `enablePlayIntegrity`: false unless configured
+
+### Optional future signal shape (not shipped)
+
+A richer per-signal shape has been proposed for a later major version. It is **not** the current public contract and must not replace `DeviceRiskResult` without an explicit migration:
+
+```ts
+// PROPOSAL ONLY — do not implement as a breaking rename of DeviceRiskResult.
+type CompromiseAssessment = {
+  compromised: boolean;
+  confidence: 'low' | 'medium' | 'high' | 'critical';
+  score: number;
+  signals: Array<{
+    id: string;
+    platform: 'ios' | 'android';
+    category:
+      | 'filesystem'
+      | 'sandbox'
+      | 'mount'
+      | 'process'
+      | 'injection'
+      | 'hook'
+      | 'property'
+      | 'package'
+      | 'signature'
+      | 'debugger';
+    detected: boolean;
+    reliability: number;
+    evidence?: string;
+  }>;
+};
+```
+
+If adopted, map onto the existing model rather than forking it:
+
+| Proposal field | Current equivalent / plan |
+|---|---|
+| `confidence: 'critical'` | Keep `Confidence` as completeness of the pass; do not overload it with severity. Prefer a high aggregated `score` + high-severity signals. |
+| `category` | Optional additive field on `DetectionSignal` (new Nitro type + catalog metadata). Non-breaking if optional. |
+| `detected` | Inferred today: a non-`unavailable` signal in `signals` is a positive finding. Explicit `detected` is redundant unless we start returning negative/clean check rows. |
+| `reliability` | Closest to catalog weight (`score`) and/or a future per-check reliability factor used only inside aggregation. |
+| `platform` on each signal | Already on `DeviceRiskResult.platform`; per-signal platform is only useful if a single result can mix platforms (it cannot today). |
+
+Prefer additive, optional fields and new signal ids over renaming `DeviceRiskResult` or changing `confidence` semantics.
 
 ## Risk model
 
@@ -99,11 +142,13 @@ Use weighted, independently generated signals. Cap the overall score at 100 and 
 | High | Zygisk/Magisk artifact in mount metadata | 35 | Strong local signal |
 | High | Zygisk, LSPosed, Frida, or Riru library mapped in process memory | 30 | Use exact and normalized pattern matching |
 | High | SELinux disabled/permissive on production device | 25 | OEM/debug exemptions must be documented |
+| High | Local debug/instrumentation TCP service responding | 30 | Loopback-only; short timeout; see Phase 5 |
 | Medium | Root manager/kernel-root data directory accessible | 20 | Multi-method native probes |
 | Medium | Boot verification unlocked or orange | 20 | Do not treat alone as root |
 | Medium | Integrity verdict fails server policy | 30 | Verify only on backend |
+| Medium | iOS URL scheme / rootless jailbreak artifact | 20 | Scheme presence is not proof alone |
 | Low | `su` executable/path found | 10 | Commonly hidden and easy to hook |
-| Low | `test-keys` build tag | 10 | Often legitimate on custom ROMs |
+| Low | `test-keys` build tag | 10 | Often legitimate on custom ROMs; whitelist path in Phase 6 |
 | Low | Hidden mount-namespace overlay content | 10 | See note below |
 | Informational | Debugger/TracerPid | 0 by default | Separate signal from compromise |
 
@@ -114,32 +159,185 @@ Use weighted, independently generated signals. Cap the overall score at 100 and 
 ## Architecture
 
 ```text
-TypeScript API (src/index.ts barrel + wrappers)
+TypeScript API (src/index.tsx barrel + wrappers)
   -> Nitro HybridObjects (nitrogen codegen)
     -> Shared C++ core: scoring, signal catalog, pattern matching, /proc parsing (Android)
-    -> Android edge: Kotlin HybridObjects (PackageManager, system properties, Play Integrity)
-    -> iOS edge: Swift HybridObjects (sandbox, loaded images, URL schemes, debugger state)
+    -> Shared C++ platform runners: AndroidChecks.cpp / IOSChecks.cpp
+    -> Android edge (future): Kotlin HybridObjects (PackageManager, Play Integrity)
+    -> iOS edge (future): Swift HybridObjects (URL schemes, sandbox helpers needing UIKit)
   -> Optional backend attestation verifier
 ```
 
 ### Native core: cross-platform C++
 
-The root HybridObject is implemented in C++ (`{ ios: 'c++'; android: 'c++' }`) so scoring primitives, the signal catalog, deduplication, and pattern matching are shared across platforms in one implementation. Platform-specific work stays in thin Swift/Kotlin HybridObjects at the edges:
+The root HybridObject is implemented in C++ (`{ ios: 'c++'; android: 'c++' }`) so scoring primitives, the signal catalog, deduplication, and pattern matching are shared across platforms in one implementation. Platform-specific work stays in focused C++ helpers today; thin Swift/Kotlin HybridObjects are reserved for APIs that truly require the platform runtime:
 
-- C++: `/proc` parsing (Android), mountinfo/maps pattern matching, scoring and signal aggregation, TracerPid checks.
-- Kotlin: `PackageManager` queries, system-property reads, verified-boot properties, Play Integrity token acquisition. The C++ core can call these through the generated C++ spec interface.
-- Swift: sandbox-boundary probes, `_dyld` loaded-image inspection, URL-scheme checks, `sysctl` debugger state.
+- C++: `/proc` parsing (Android), mountinfo/maps pattern matching, scoring and signal aggregation, TracerPid checks, iOS jailbreak paths / `_dyld` / `sysctl`.
+- Kotlin (deferred): `PackageManager` queries, Play Integrity token acquisition.
+- Swift (deferred): `UIApplication.canOpenURL` and any UIKit-bound probes.
 - TypeScript: configuration, typed result shaping, legacy wrapper compatibility, watchdog option defaults.
-
-The existing `android/src/main/java/com/rootjaildetect/native/native_security.cpp` JNI checks migrate into the C++ core; the hand-written JNI export layer is deleted because Nitro generates the bindings.
 
 ### Nitro object model
 
 - `RootJailDetect` (root HybridObject, autolinked): `configure(options)`, `checkDetailed(): Promise<DeviceRiskResult>`, sync cheap getters for cached state. Default-constructible.
-- `SecurityWatchdog` (separate HybridObject): owns the long-lived background thread and mutable lifecycle state, per the one-lifecycle-per-HybridObject rule. Created from the root object, exposes `start(options)` / `stop()` / `isRunning`. **The watchdog consumes `checkDetailed()` with the configured threshold** — it must not duplicate boolean detection logic. Existing modes (`LOG_ONLY`, `THROW_EXCEPTION`, `TERMINATE`) and millisecond intervals are preserved on both platforms.
-- Named spec types (`DetectionSignal`, `DeviceRiskResult`, options, enums) live in their own files under `src/specs/` and are re-exported publicly.
+- `SecurityWatchdog` (separate HybridObject): owns the long-lived background thread and mutable lifecycle state. Created from the root object, exposes `start(options)` / `stop()` / `isRunning`. **The watchdog consumes `checkDetailed()` with the configured threshold** — it must not duplicate boolean detection logic. Existing modes (`LOG_ONLY`, `THROW_EXCEPTION`, `TERMINATE`) and millisecond intervals are preserved on both platforms.
+- Named spec types live in their own files under `src/specs/` and are re-exported publicly.
 
-## Android implementation
+## Implementation status (audit)
+
+### Shipped baseline
+
+The open-source library already implements a substantial scored baseline on both platforms through the shared C++ core:
+
+**Android (Phase 1 — done)**
+
+- Root-manager directories and conventional `su` binaries (`stat(2)` probes).
+- Writable / suspicious mount metadata via `/proc/self/mountinfo` and `/proc/self/mounts` (Magisk, KernelSU, APatch, overlays).
+- `/proc/self/maps` scan for Zygisk, LSPosed/Xposed, Frida (`frida`, `gum-js-loop`, etc.), Riru.
+- SELinux enforce state via `/sys/fs/selinux/enforce`.
+- Build/verified-boot properties (`test-keys`, bootloader unlocked, emulator props) via `__system_property_get`.
+- Runtime instrumentation: Frida-like cmdline tokens and local unix-socket indicators.
+- `TracerPid` as an informational debugger signal (score 0 by default).
+- Total `timeoutMs` budget with `unavailable` + `partial` semantics.
+- Pure, fixture-testable parsers in `cpp/ProcParsers.*` and aggregation in `cpp/Scoring.hpp`.
+
+**iOS (Phase 1 — done, conservative)**
+
+- Classic jailbreak artifact paths (`/Applications/Cydia.app`, MobileSubstrate, `/var/jb`, `/private/jb`).
+- `_dyld` loaded-image scan for MobileSubstrate, Substitute, Frida, libhooker.
+- `sysctl` `P_TRACED` debugger state (informational).
+- Simulator flag.
+- Shared signal catalog + scoring path (same as Android).
+
+**Cross-cutting (done)**
+
+- Nitro HybridObjects, nitrogen codegen, legacy boolean wrappers over `checkDetailed()`.
+- Security watchdog background loop consuming the same assessment path.
+- Expo config plugin skeleton (`app.plugin.js`) for scoped Android `<queries>`.
+- Jest coverage for the TypeScript wrapper layer.
+
+### Gaps and missing checks
+
+Fundamentals are in place, but several modern evasion paths and hardening items remain open. Each item below is scoped to the current architecture (shared C++ first; Swift/Kotlin only when required).
+
+#### 1. Rootless iOS / modern jailbreak indicators — **open (P0)**
+
+Classic paths miss rootless jailbreaks (Dopamine, palera1n rootless, TrollStore-style installs) that avoid `/Applications/Cydia.app` and classic MobileSubstrate layouts. Many still leave:
+
+- Rootless prefix trees under `/var/jb`, `/private/preboot/...`, or bootstrap-specific paths beyond the current short list.
+- TrollStore / TrollStore Lite markers and related helper apps.
+- Injected or renamed hook libraries not covered by the current `_dyld` token list.
+- Entitlement / sandbox anomalies best probed from a narrow Swift edge if pure filesystem checks are insufficient.
+
+**Plan:** extend `cpp/IOSChecks.cpp` path and image lists with versioned, documented artifacts; add distinct signal ids (for example `ios.jailbreak.rootless`, `ios.jailbreak.trollstore`) rather than overloading `ios.jailbreak.artifact`. Keep weights medium until validated on physical devices. Do not treat a single missing classic path as clean.
+
+#### 2. Frida / instrumentation renaming — **partial**
+
+Android maps already match several Frida-related tokens (`frida`, `frida-agent`, `gum-js-loop`, `gmain`, `linjector`, `pool-frida`). Gaps:
+
+- Renamed gadgets (`libgadget`, `libhelper`, generic `gadget` dylib/so names) need careful, low-FP patterns.
+- iOS `_dyld` scan should include common renamed Frida/gadget strings, not only `Frida`.
+- Optional deeper memory-region inspection on iOS (`vm_region` / related) only if it stays within the timeout budget and has a clear FP profile.
+
+**Plan:** extend pattern tables in `ProcParsers` and `IOSChecks`; keep one high-weight maps/dyld signal family; dedupe equivalent evidence in scoring.
+
+#### 3. Local network service probes — **open (P1)**
+
+No loopback TCP probes exist today. Compromised devices often expose:
+
+| Port | Typical service | Suggested signal id |
+|---:|---|---|
+| 22 / 44 | SSH (common on jailbroken iOS) | `ios.network.ssh` / `android.network.ssh` |
+| 5037 | ADB | `android.network.adb` |
+| 27042 | Frida default | `android.network.frida` / `ios.network.frida` |
+
+**Plan:** new `cpp/TcpProbe.hpp` / `.cpp` with non-blocking connect, short per-port deadline, RAII socket cleanup, **127.0.0.1 / ::1 only**. Wire from `AndroidChecks` and `IOSChecks`. Success (connect or identifiable banner) is a high-weight signal; failure to connect is silence (not a clean bill of health). Never probe non-loopback addresses. Fold into the existing `timeoutMs` budget so a slow localhost stack cannot stall the pass. P3 may extend the same helper with `meta.tcp.*` banner fingerprints.
+
+#### 4. SELinux and dangerous Android properties — **partial**
+
+Shipped: `/sys/fs/selinux/enforce` → `android.selinux.permissive`. Still useful:
+
+- Cross-check via `__system_property_get("ro.build.selinux")` so a single blocked sysfs path cannot hide a permissive policy.
+- Additional properties: `ro.debuggable`, `service.adb.root`, `ro.secure`, and related debug/adb roots.
+- Treat unexpected values as medium/low signals with OEM-aware caveats (see whitelist); dedupe equivalent SELinux evidence in scoring.
+- Prefer `__system_property_get` in `AndroidProbes` (already the pattern); do **not** shell out to `getprop` via `Runtime.exec`.
+
+#### 5. iOS URL scheme checks — **open (P1)**
+
+`UIApplication.canOpenURL` for schemes such as `cydia://`, `sileo://`, `zbra://`, `filza://` is not implemented. This requires a thin Swift edge HybridObject (UIKit) called from the C++ runner, plus `LSApplicationQueriesSchemes` entries via the Expo config plugin / app config.
+
+**Plan:** async-safe main-thread hop only if UIKit requires it; cache the result for the duration of one `checkDetailed()` pass; missing scheme registration must yield `unavailable` or no signal, never a false positive. Document that modern iOS limits scheme querying.
+
+#### 6. File-read deadlines — **partial**
+
+`readFileIfExists` exists and the Android/iOS runners honor a shared steady-clock deadline, but individual reads are still unbounded syscalls. Under pathological FS latency a single read can burn the whole budget.
+
+**Plan:** extend `readFileIfExists(path, deadline)` (and/or a max-bytes cap) in `cpp/ProcParsers.*`; used by `/proc` and path probes; keep “unreadable or timed out ⇒ no detection / `unavailable`”.
+
+#### 7. String obfuscation — **open (P2)**
+
+Suspicious path and token tables are plaintext in the binary today. A compile-time or build-time obfuscation step for literal tables raises the bar for casual static inspection. Prefer a simple reversible decode at startup over heavy commercial packers; never claim this stops a determined reverse engineer.
+
+#### 8. OEM / benign whitelist — **open (P2)**
+
+Some preview/OEM builds legitimately ship `test-keys` or unusual SELinux states. A small, reviewed allowlist (build fingerprint / model / tags) can suppress specific low-severity signals. Ship as data (JSON or constexpr table), default empty/minimal, and document every entry. Do not silently drop high-severity memory/mount signals via whitelist.
+
+#### 9. Native unit tests — **partial (P2)**
+
+Jest covers wrappers. Pure C++ parsers/scoring are structured for fixtures but host-side native tests are not yet a first-class CI job on all platforms. Add:
+
+- Host-side (or Android instrumented) tests for `ProcParsers`, `Scoring`, SELinux text parsing, and TCP probe state machines with fake FDs where possible.
+- Keep device/emulator behavioral checks in the example app and `e2e/matrix.md`.
+
+#### 10. Mount namespace refinement — **partial**
+
+`scanNamespaceOnlyMountArtifacts` today reports when a known root **token** appears in the app mountinfo and not in PID 1’s. Reshape toward structured path/content diff rather than token-only matching; never flag namespace identity mismatch alone. On iOS, unexpected nesting under `/private` remains a research item with high FP risk — gate behind validation.
+
+#### 11. Extended meta.tcp / advanced probes — **open (P3)**
+
+Higher-level loopback HTTP or JNI `Socket.connect` metadata is optional after the basic port probes prove stable. Secure hardware / Play Integrity remains server-attestation work behind `enablePlayIntegrity`.
+
+## Implementation roadmap
+
+### Completed milestones (reference)
+
+1. **Nitro skeleton** — specs, codegen, wrappers, stub-to-real HybridObjects.
+2. **Android scored baseline** — mounts, maps, SELinux, properties, paths, runtime sockets/cmdline, TracerPid, scoring + fixtures layout.
+3. **iOS Phase 1 + watchdog** — conservative artifacts, dyld, sysctl debugger split, `SecurityWatchdog` over `checkDetailed()`.
+4. **Expo skeleton** — root `app.plugin.js`, scoped `<queries>`.
+
+### Summary — what to do next
+
+Canonical work queue. Prefer one row per PR. Every new positive check needs a catalog id, README row, and (for user-visible ids) a `signalReasons` entry in `src/wrappers.ts`.
+
+| Priority | Item | Where it lands | Notes |
+|---|---|---|---|
+| **P0** | Rootless iOS detection paths and distinct signal ids (TrollStore / rootless bootstrap / expanded artifacts) | `cpp/IOSChecks.cpp`, `cpp/SignalCatalog.hpp` + `.cpp`, `src/wrappers.ts` (`signalReasons`), README catalog | Do not overload `ios.jailbreak.artifact` forever; add e.g. `ios.jailbreak.rootless`, `ios.jailbreak.trollstore`. Medium weight until physical-device validated. |
+| **P0** | Frida-renamed patterns (`libhelper`, `libgadget`, cautious `gadget` tokens) | `cpp/ProcParsers.cpp` (`K_HOOK_PATTERNS`), mirror tokens in `cpp/IOSChecks.cpp` `_dyld` scan | Keep under existing high-weight Frida/maps/dyld signal families; watch false positives on benign libs named `helper`. |
+| **P1** | Loopback TCP port probes (27042 Frida, 22/44 SSH, 5037 ADB) | New `cpp/TcpProbe.hpp` / `cpp/TcpProbe.cpp` (or `LocalPortProbes.*`); wire from `cpp/AndroidChecks.cpp` and `cpp/IOSChecks.cpp`; catalog ids; CMake + podspec sources | `127.0.0.1` / `::1` only; non-blocking connect; short per-port deadline inside total `timeoutMs`; RAII FDs; refused/timeout = no signal. |
+| **P1** | Cross-check SELinux via `__system_property_get("ro.build.selinux")` (and related debug props) | `cpp/AndroidProbes.cpp`, optional fold in `cpp/AndroidChecks.cpp` | `/sys/fs/selinux/enforce` already ships. Property path is a second vector, not a shell-out to `getprop`. Also consider `ro.debuggable`, `service.adb.root`, `ro.secure`. Dedupe with `android.selinux.permissive` where equivalent. |
+| **P1** | iOS Swift edge HybridObject for `UIApplication.canOpenURL` | New files under `ios/` (currently empty/reserved); Nitro/Swift edge + call from C++ runner; `app.plugin.js` merges `LSApplicationQueriesSchemes` | Schemes: `cydia`, `sileo`, `zbra`, `filza` (start minimal). Undeclared scheme → no false positive. |
+| **P1** | `readFileIfExists` with deadline (and/or size cap) | `cpp/ProcParsers.hpp` / `.cpp` (`readFileIfExists`), call sites in `cpp/AndroidChecks.cpp` | Runner-level deadline exists; individual reads can still stall. Unreadable or timed-out read ⇒ no detection / `unavailable`, never invert to compromise. |
+| **P2** | String obfuscation for path/token tables | New `cpp/ObfuscatedString.hpp` (or build-time encode); apply at `K_HOOK_PATTERNS`, mount tokens, iOS path lists | Raises casual RE bar only; do not claim bypass resistance. |
+| **P2** | OEM whitelist for benign `test-keys` / unusual SELinux | Small JSON or constexpr table + gate in `cpp/AndroidChecks.cpp` / probes | Low-severity signals only. Document every entry. Never whitelist away maps/mount high signals. |
+| **P2** | C++ unit tests for pure logic | `cpp/__tests__/` (or host test target) for `Scoring.hpp`, `ProcParsers`, `SignalCatalog`; keep Jest for `src/wrappers.ts` | Fixture strings already match the pure-parser split. Add TcpProbe state-machine tests with fakes where possible. |
+| **P2** | Mount-namespace overlay detection reshaped (path/content diff, not only token presence) | `cpp/ProcParsers.cpp` (`scanNamespaceOnlyMountArtifacts`) | Today: known root token in self mountinfo and absent from init. Evolve toward structured path diff; **never** flag namespace identity mismatch alone. |
+| **P3** | Richer `meta.tcp.*` probes (banner/fingerprint beyond connect) | Extend `cpp/TcpProbe.*`; optional signals from both platform checkers | Only after basic connect probes are stable and FP-reviewed. |
+| **P3** | Play Integrity + backend policy | Kotlin edge (deferred), `enablePlayIntegrity`, backend verifier docs | Server verifies token; client score is never authoritative. |
+| **P3** | Quarterly artifact/catalog refresh + optional sanitized signal-id telemetry | `SignalCatalog`, README, `e2e/matrix.md` | No raw paths in production telemetry. |
+
+### PR slicing (suggested order)
+
+| PR | Bundles rows above | Primary touch points |
+|---|---|---|
+| **PR 6** | P0 rootless iOS + P0 Frida rename tokens | `IOSChecks`, `ProcParsers` `K_HOOK_PATTERNS`, `SignalCatalog`, `wrappers.ts` reasons, README, matrix |
+| **PR 7** | P1 TCP probes | `cpp/TcpProbe.*`, both checkers, catalog, CMake/podspec, unit tests for connect state machine |
+| **PR 8** | P1 SELinux property + debug/adb props | `AndroidProbes`, `AndroidChecks`, catalog/FP notes |
+| **PR 9** | P1 `canOpenURL` Swift edge | `ios/*`, nitro autolinking if needed, `app.plugin.js`, docs |
+| **PR 10** | P1 deadline-aware `readFileIfExists` | `ProcParsers`, Android (and any shared) readers |
+| **Later** | P2/P3 rows | obfuscation, OEM whitelist, native CI tests, mount path-diff, meta.tcp, Play Integrity |
+
+## Android implementation (historical phases)
 
 ### Phase 0: repository audit and test harness
 
@@ -149,39 +347,39 @@ The existing `android/src/main/java/com/rootjaildetect/native/native_security.cp
 4. Establish a device matrix: stock Android, bootloader-unlocked stock Android, Magisk with Zygisk, Magisk with DenyList, Magisk with common hiding modules, KernelSU, APatch, emulator, and custom ROM.
 5. Record expected results in `e2e/matrix.md`.
 
-### Phase 1: scored native baseline
-
-Implement these checks first, in priority order:
+### Phase 1: scored native baseline — **done**
 
 1. Parse `/proc/self/mountinfo` and `/proc/self/mounts` for root-framework overlays, suspicious bind mounts, and known Magisk/KSU/APatch remnants.
-2. Compare mount namespaces only to surface hidden overlay content, never as identity-mismatch proof (see risk model note).
+2. Compare mount namespaces only to surface hidden overlay content, never as identity-mismatch proof.
 3. Parse `/proc/self/maps` for loaded Zygisk, Riru, LSPosed, Frida, and known hooking-framework artifacts.
-4. Check SELinux enforcement state using system interfaces and native file reads.
+4. Check SELinux enforcement state using native file reads.
 5. Read relevant verified-boot and debug build properties.
-6. Probe root-manager directories and conventional `su` locations through more than one native filesystem API.
+6. Probe root-manager directories and conventional `su` locations through native filesystem APIs.
 7. Add `TracerPid` and debugger checks as informational signals.
 8. Return all signals through `checkDetailed()`.
 
-### Phase 2: package and runtime checks
+### Phase 2: package and runtime checks — **partial**
 
-1. Detect known root-management and hook-management packages through `PackageManager` while treating renamed/hidden apps as expected evasion.
-2. Add defensive process, command-line, and local-socket indicators for runtime instrumentation.
-3. Enforce per-check deadlines and the total `timeoutMs` budget; failures and timeouts return `unavailable` signals rather than crashing or blocking the app.
-4. Ensure the implementation works without `QUERY_ALL_PACKAGES`; request only narrowly necessary package visibility entries where possible.
+1. Detect known root-management and hook-management packages through `PackageManager` while treating renamed/hidden apps as expected evasion. (**Kotlin edge — deferred**)
+2. Add defensive process, command-line, and local-socket indicators for runtime instrumentation. (**cmdline + unix socket — done**; TCP Frida/ADB — **open**)
+3. Enforce per-check deadlines and the total `timeoutMs` budget. (**done at runner level**; per-read caps — **open**)
+4. Ensure the implementation works without `QUERY_ALL_PACKAGES`; request only narrowly necessary package visibility entries where possible. (**manifest queries present**)
 
-### Phase 3: resilience and integrity
+### Phase 3: resilience and integrity — **open**
 
-1. Add optional light self-integrity for native assets, such as expected library metadata/check values supplied at build time.
-2. Avoid presenting client self-integrity as authoritative: local code can always be modified by a sufficiently capable attacker.
+1. Optional light self-integrity for native assets.
+2. Avoid presenting client self-integrity as authoritative.
 3. Integrate Play Integrity token acquisition behind an explicit option.
-4. Send the token to the application backend; the backend verifies it with Google and applies product-specific policy.
-5. Bind sensitive API actions to a short-lived server-issued session decision rather than trusting an unverified client boolean.
+4. Backend verifies with Google and applies product-specific policy.
+5. Bind sensitive API actions to short-lived server-issued session decisions.
+
+### Phase 5: local service and property depth — **open (this plan)**
+
+See roadmap PRs 7–8. Network probes are loopback-only; property expansion stays in `AndroidProbes`.
 
 ## iOS implementation
 
-### Correct debugger semantics
-
-Split debugger status from jailbreak status immediately:
+### Correct debugger semantics — **done**
 
 - `debuggerDetected` is diagnostic and must not affect `compromised` by default.
 - Enable debugger-based blocking only through `treatDebuggerAsCompromise: true`.
@@ -190,19 +388,23 @@ Split debugger status from jailbreak status immediately:
 
 ### Jailbreak checks
 
-1. Maintain a conservative list of known jailbreak application/file artifacts.
-2. Attempt sandbox-boundary checks safely, without modifying user data.
-3. Inspect suspicious injected dynamic libraries and loaded-image names as a best-effort signal.
-4. Check URL schemes carefully; unavailable schemes are not proof of a clean device.
-5. Make each signal independently visible in `checkDetailed()` and tune weights against real stock-device testing.
+| Item | Status |
+|---|---|
+| Conservative classic artifact paths | Done |
+| Sandbox-boundary write probes | Open (high FP risk; design carefully) |
+| Injected dylib / loaded-image names | Done (expand rename list) |
+| URL schemes (`canOpenURL`) | Open — PR 9 |
+| Rootless / TrollStore-class artifacts | Open — PR 6 |
+| Independent signals in `checkDetailed()` | Done |
 
 ## Expo delivery
 
-1. Keep the Expo config plugin at the root-level `app.plugin.js` (move it under `plugin/src/` only if it grows non-trivial) to configure Android/iOS native project changes during `expo prebuild`.
-2. Ensure the module works with EAS Build and a custom development client.
-3. Fail clearly in Expo Go with an actionable error: native checks require prebuild/custom client.
-4. Provide an Expo example app with development and release configuration examples.
-5. Nitro requires the New Architecture, which is the only supported mode; no bridge fallback is provided.
+1. Keep the Expo config plugin at the root-level `app.plugin.js` (move under `plugin/src/` only if it grows non-trivial) to configure Android/iOS native project changes during `expo prebuild`.
+2. When URL schemes ship, the plugin must merge `LSApplicationQueriesSchemes` safely.
+3. Ensure the module works with EAS Build and a custom development client.
+4. Fail clearly in Expo Go with an actionable error: native checks require prebuild/custom client.
+5. Provide an Expo example app with development and release configuration examples.
+6. Nitro requires the New Architecture, which is the only supported mode; no bridge fallback is provided.
 
 ## Repository layout
 
@@ -217,14 +419,21 @@ src/
                                # SecurityWatchdogOptions) — each in its own file for codegen
   wrappers.ts            # Legacy boolean API over checkDetailed() + lazily-created root handle
 cpp/                     # Shared C++ HybridObject implementations + detection core
+  HybridRootJailDetect.*
+  HybridSecurityWatchdog.*
+  DeviceRiskAssessment.*
+  SignalCatalog.* / Scoring.hpp
+  ProcParsers.* / AndroidProbes.* / AndroidChecks.*
+  IOSChecks.*
+  TcpProbe.*             # Planned — loopback TCP probes (Frida/SSH/ADB)
 android/
   build.gradle           # Android library config (Nitro autolinking + CMake externalNativeBuild)
   CMakeLists.txt         # Builds the RootJailDetect shared library from cpp/
   src/main/AndroidManifest.xml   # Narrow <queries> set for known root-manager apps
-ios/                     # Reserved for future Swift edge HybridObjects; currently empty
+ios/                     # Swift edge HybridObjects (URL schemes) — currently empty / reserved
 nitro.json               # Namespaces + autolinking entries (root + watchdog, both C++-backed)
 nitrogen/generated/      # Codegen output; committed, never hand-edited
-app.plugin.js            # Expo config plugin entry (adds scoped <queries> on prebuild)
+app.plugin.js            # Expo config plugin entry (scoped <queries>; future URL schemes)
 example/
   src/App.tsx            # Usage demo for both legacy boolean API and checkDetailed()
   android/               # Native example project
@@ -256,6 +465,7 @@ Keep `README.md` synchronized with the exported APIs, defaults, signal catalog, 
 
 - Unit-test `/proc` parsers with fixtures for stock and modified mount/maps samples.
 - Unit-test scoring: duplicate/equivalent signals must not inflate scores unexpectedly.
+- Unit-test local port probe state machine (connect success/refused/timeout) without requiring a real Frida server when fakes are feasible.
 - Instrumentation-test native bridge failures, timeouts, and malformed input.
 - Type-test the public TypeScript API.
 - Prefer `react-native-harness` E2E tests in a real RN environment for the Nitro API surface.
@@ -273,9 +483,10 @@ Validate every release on:
 - KernelSU or APatch when available
 - Stock iPhone
 - iPhone attached to Xcode debugger
-- Jailbroken iPhone when available
+- Jailbroken iPhone when available (including at least one rootless profile when possible)
+- TrollStore or equivalent sideload profile when available
 
-### Acceptance criteria for v2.0.0
+### Acceptance criteria for v2.0.0 baseline (local scored API)
 
 - A stock locked Android device produces no high-severity root signals.
 - A Magisk + Zygisk device that hides `su` still produces one or more meaningful environment or memory-related signals when artifacts remain visible.
@@ -285,23 +496,38 @@ Validate every release on:
 - Watchdog start, duplicate start, stop, and restart behave correctly in `LOG_ONLY` mode and consume the same scoring path as `checkDetailed()`.
 - The library never claims that it is impossible to bypass.
 
+### Additional acceptance criteria for post-baseline PRs
+
+- Loopback probes never leave the local host and always respect the shared timeout budget.
+- URL scheme checks degrade safely when schemes are not declared in `LSApplicationQueriesSchemes`.
+- New rootless signals are validated against at least one physical jailbreak profile or explicitly marked experimental in the catalog docs.
+- Whitelist entries, if any, are documented and limited to low-severity property/tag signals.
+
 ## Release milestones
 
-### Milestone 1: Nitro migration + reliable local baseline
+### Milestone 1: Nitro migration + reliable local baseline — **largely complete**
 
-- Nitro spec, codegen pipeline, shared C++ core, thin Kotlin/Swift edges
+- Nitro spec, codegen pipeline, shared C++ core
 - Detailed scored API and legacy wrappers
-- Android mounts, maps, SELinux, properties, path probes, and debugger status
-- iOS debugger/jailbreak separation
-- Watchdog reimplemented as a HybridObject over the scoring path
+- Android mounts, maps, SELinux, properties, path probes, runtime indicators, debugger status
+- iOS debugger/jailbreak separation + conservative artifacts
+- Watchdog as a HybridObject over the scoring path
 - Tests, sample app, and detection documentation
-- Published as `0.2.0` with a migration guide (New Architecture required, no API renames)
 
-### Milestone 2: Expo-ready package
+### Milestone 2: Expo-ready package — **skeleton present**
 
 - Config plugin
 - Expo prebuild and EAS sample
 - Clear Expo Go behavior
+- URL-scheme plist merging when PR 9 lands
+
+### Milestone 2b: evasion depth (this audit)
+
+- Rootless iOS + Frida rename coverage
+- Loopback TCP service probes
+- Expanded Android debug properties
+- iOS URL schemes
+- Read-deadline hardening
 
 ### Milestone 3: integrity-backed decisions
 
@@ -314,6 +540,7 @@ Validate every release on:
 - Quarterly test-matrix refresh
 - Versioned signal catalog
 - Regression tests for new Android releases and commonly used root frameworks
+- Optional string-table obfuscation and OEM allowlist maintenance
 - Changelog entries describing detection changes and compatibility impact
 
 ## Backend integration contract
@@ -334,10 +561,25 @@ The backend must verify the Integrity token directly with the provider, validate
 
 ## Immediate next PRs
 
-Kept small and focused, in order:
+Kept small and focused, in order (see **Summary — what to do next** for file-level detail):
 
-1. **PR 1 — Nitro skeleton:** `nitro.json`, `src/specs/RootJailDetect.nitro.ts` with `checkDetailed()` returning the full `DeviceRiskResult` struct, nitrogen codegen wired into the build, example app compiling against generated specs with stub native implementations returning empty results. Legacy wrappers reshaped over `checkDetailed()` with stub data.
-2. **PR 2 — Android scored baseline:** C++ mountinfo/maps parsers, SELinux and verified-boot checks, TracerPid as informational, scoring with dedup, fixture-based parser unit tests.
-3. **PR 3 — iOS separation + watchdog:** debugger/jailbreak split, `SecurityWatchdog` HybridObject consuming `checkDetailed()`, repeated start/stop/restart coverage in `LOG_ONLY` mode.
-4. **PR 4 — Expo skeleton:** config plugin stub, Expo prebuild example, Expo Go error path.
-5. **PR 5 — Matrix documentation:** Magisk + Zygisk + DenyList test profile and recorded observed signals in `e2e/matrix.md`.
+1. **PR 6 — Rootless iOS + Frida rename tokens (P0):** `IOSChecks` paths/ids; `K_HOOK_PATTERNS` + iOS `_dyld` renames (`libhelper`, `libgadget`, …); `SignalCatalog` + `signalReasons` + README.
+2. **PR 7 — Loopback TCP probes (P1):** new `cpp/TcpProbe.*` for 27042 / 22 / 44 / 5037; wire both platform checkers; high-weight signals; budget-aware; state-machine tests.
+3. **PR 8 — SELinux property + debug props (P1):** `__system_property_get("ro.build.selinux")` cross-check plus `ro.debuggable` / `service.adb.root` / `ro.secure` in `AndroidProbes`.
+4. **PR 9 — iOS URL schemes (P1):** Swift edge HybridObject under `ios/` for `canOpenURL`; config plugin `LSApplicationQueriesSchemes`; C++ orchestration.
+5. **PR 10 — Deadline-aware `readFileIfExists` (P1):** deadline/size caps in `ProcParsers`; call sites honor shared budget without stalling.
+6. **Later — P2/P3:** `ObfuscatedString.hpp`, OEM whitelist in `AndroidChecks`, C++ unit tests under `cpp/__tests__/`, `scanNamespaceOnlyMountArtifacts` path-diff, `meta.tcp.*`, Play Integrity.
+
+## Security implementation notes for new checks
+
+- Every new heuristic is fallible. Unreadable files, closed ports, and missing URL schemes are **not** proof of a clean device.
+- Catch expected access failures narrowly; return no signal or `unavailable`, never invert into compromise without an explicit design.
+- Keep boolean wrappers derived from `DeviceRiskResult` so logic stays singular.
+- Add a distinct public signal id (and redacted evidence when enabled) for every new positive condition.
+- Network probes: loopback only, short timeouts, deterministic FD cleanup (RAII).
+- Do not exercise watchdog `TERMINATE` in automated tests; use `LOG_ONLY`.
+- Update `SignalCatalog`, README catalog table, example app (when user-visible), and tests together with any new id.
+
+## Conclusion
+
+The Nitro scored baseline covers classic Android root and conservative iOS jailbreak signals, with shared aggregation and a watchdog that cannot drift from `checkDetailed()`. Remaining work targets modern concealment: rootless iOS footprints, renamed instrumentation, loopback service exposure, deeper property checks, UIKit URL schemes, and hardening/obfuscation. Combining filesystem, process, memory, network, and property signals into a fused risk score — rather than a single boolean — remains the design center. Each new check should land as a small PR with catalog ids, timeout safety, and matrix notes; none of this replaces server-side attestation for authorization decisions.

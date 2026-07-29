@@ -208,25 +208,30 @@ Split debugger status from jailbreak status immediately:
 
 ```text
 src/
-  index.ts               # Barrel: re-exports + root Nitro object creation
+  index.tsx              # Barrel: re-exports wrappers and spec types
   specs/
-    RootJailDetect.nitro.ts
-    SecurityWatchdog.nitro.ts
-    DeviceRiskResult.ts  # Named structs, unions, option types
-  wrappers.ts            # Legacy boolean API over checkDetailed()
+    RootJailDetect.nitro.ts    # Root HybridObject spec (configure, checkDetailed, getWatchdog)
+    SecurityWatchdog.nitro.ts  # Watchdog HybridObject spec (start, stop, isRunning)
+    *.ts                       # Named codegen types (DeviceRiskResult, DetectionSignal, Severity,
+                               # Confidence, Platform, ProtectionMode, RootJailDetectOptions,
+                               # SecurityWatchdogOptions) — each in its own file for codegen
+  wrappers.ts            # Legacy boolean API over checkDetailed() + lazily-created root handle
 cpp/                     # Shared C++ HybridObject implementations + detection core
 android/
-  src/main/java/.../     # Thin Kotlin edge HybridObjects
-ios/                     # Reserved for thin Swift edge HybridObjects
-nitro.json               # Namespaces + autolinking entries
+  build.gradle           # Android library config (Nitro autolinking + CMake externalNativeBuild)
+  CMakeLists.txt         # Builds the RootJailDetect shared library from cpp/
+  src/main/AndroidManifest.xml   # Narrow <queries> set for known root-manager apps
+ios/                     # Reserved for future Swift edge HybridObjects; currently empty
+nitro.json               # Namespaces + autolinking entries (root + watchdog, both C++-backed)
 nitrogen/generated/      # Codegen output; committed, never hand-edited
-app.plugin.js            # Expo config plugin entry
+app.plugin.js            # Expo config plugin entry (adds scoped <queries> on prebuild)
 example/
-  expo/
-  react-native/
+  src/App.tsx            # Usage demo for both legacy boolean API and checkDetailed()
+  android/               # Native example project
+  ios/                   # Native example project
 e2e/
-  matrix.md
-  fixtures/
+  matrix.md              # Manual validation matrix for release sign-off
+  fixtures/              # Fixture strings for the deterministic /proc parsers
 ```
 
 Migration notes:

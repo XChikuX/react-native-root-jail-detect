@@ -12,6 +12,10 @@ A **React Native Nitro Module** (New Architecture only) for detecting rooted (An
 ## Installation
 
 ```sh
+# npm
+npm install @psync/anti-jailbreak react-native-nitro-modules
+
+# bun (recommended for development)
 bun add @psync/anti-jailbreak react-native-nitro-modules
 ```
 
@@ -20,7 +24,7 @@ bun add @psync/anti-jailbreak react-native-nitro-modules
 ### iOS & Expo
 
 - **iOS:** Run `cd ios && pod install`
-- **Expo:** Custom dev client or EAS Build required (cannot run in Expo Go). Add `plugins: ["@psync/anti-jailbreak"]` to `app.json` if package plugins aren't auto-resolved.
+- **Expo:** Custom dev client or EAS Build required (cannot run in Expo Go). The package ships an Expo config plugin (`app.plugin.js`) that adds narrowly scoped `<queries>` entries for known root-manager apps on Android; it is wired automatically, but can be referenced explicitly with `plugins: ["@psync/anti-jailbreak"]` in `app.json` if package plugins are not auto-resolved. `@expo/config-plugins` is an optional peer (declared in `peerDependenciesMeta`); Expo prebuild always provides it as a transitive dependency of `expo`.
 
 ---
 
@@ -54,6 +58,74 @@ startSecurityWatchdog({ intervalMs: 5000, protectionMode: 'LOG_ONLY' });
 - **`getDetectionReasons(): Promise<string[]>`** — Returns human-readable reasons for fired signals.
 - **`startSecurityWatchdog(options): void`** — Periodically runs checks in background. `protectionMode` is `'LOG_ONLY' | 'THROW_EXCEPTION' | 'TERMINATE'`. Note: `THROW_EXCEPTION` is demoted to a logged warning on the background thread (it cannot throw into the JS runtime); `TERMINATE` ends the process. To react in app code, poll `checkDetailed()` / `isDeviceCompromised()` from JS.
 - **`stopSecurityWatchdog(): void`** — Stops the security watchdog thread.
+
+---
+
+## Result & option shapes
+
+`checkDetailed()` returns a `DeviceRiskResult`:
+
+```ts
+interface DeviceRiskResult {
+  platform: 'android' | 'ios';
+  compromised: boolean;        // score >= minScore
+  score: number;               // 0–100, clamped
+  confidence: 'low' | 'medium' | 'high';
+  signals: DetectionSignal[];  // all fired signals, including `unavailable: true` ones
+  debuggerDetected: boolean;   // informational; folds into `compromised` only if configured
+  elapsedMs: number;           // total detection pass time
+  partial: boolean;            // true when the timeoutMs budget ran out before all checks finished
+}
+
+interface DetectionSignal {
+  id: string;             // platform-prefixed, e.g. `android.mount.magisk`
+  severity: 'low' | 'medium' | 'high';
+  score: number;          // weight contributed to the aggregated score
+  evidence?: string;      // only when RootJailDetectOptions.includeEvidence = true
+  unavailable?: boolean;  // true when the check could not complete; never evidence of compromise
+}
+```
+
+`configure()` accepts a `RootJailDetectOptions` partial:
+
+```ts
+interface RootJailDetectOptions {
+  minScore?: number;                 // default 40 — `compromised` becomes true at or above this
+  timeoutMs?: number;                // default 400 — total wall-clock budget per pass
+  includeEvidence?: boolean;         // default false — see "Evidence redaction" below
+  treatDebuggerAsCompromise?: boolean; // default false
+  enablePlayIntegrity?: boolean;     // default false — server-attested; not yet wired
+}
+```
+
+---
+
+## Error semantics
+
+Wrapper behavior is preserved from v1 for backwards compatibility:
+
+- `isDeviceCompromised()` **logs and rethrows** native errors. Callers who call it directly must catch and decide policy.
+- `isEmulator()`, `isDebuggerAttached()`, and `getDetectionReasons()` log the error and return safe fallbacks (`false`, `false`, `[]`) — they never throw.
+- `checkDetailed()` and `configure()` propagate native errors directly without swallowing them.
+- `startSecurityWatchdog()` / `stopSecurityWatchdog()` keep the legacy synchronous signature by firing the async native methods without awaiting; Promise rejections are logged, not rethrown.
+
+Tests in `src/__tests__/index.test.tsx` pin these semantics; treat any change as a breaking change.
+
+---
+
+## Evidence redaction
+
+`DetectionSignal.evidence` carries redacted, human-readable hints about what was observed (e.g. `"known-jailbreak-artifact"`, `"selinux=enforce:0"`). It is **off by default** and is additionally forced off in release builds:
+
+```cpp
+#if defined(NDEBUG)
+    const bool includeEvidence = false;   // release builds: evidence is never attached
+#else
+    const bool includeEvidence = options.includeEvidence;  // debug builds: opt in via configure()
+#endif
+```
+
+Leave `includeEvidence` disabled (the default) in production. The redacted hints are still meaningful to an attacker monitoring logcat or console output; treat them as development-only.
 
 ---
 

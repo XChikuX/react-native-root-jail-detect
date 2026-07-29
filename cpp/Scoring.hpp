@@ -49,6 +49,10 @@ namespace margelo::nitro::rootjaildetect {
         case Severity::HIGH:
           return Confidence::HIGH;
       }
+      // Defensive fallback: a future, unknown Severity value should not cause
+      // undefined behavior. Treat it as the lowest confidence so the result
+      // stays well-formed and the unknown value is still visible to callers.
+      return Confidence::LOW;
     }
   }
 

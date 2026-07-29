@@ -121,6 +121,11 @@
     "react-native": "*",
     "react-native-nitro-modules": ">=0.35.0"
   },
+  "peerDependenciesMeta": {
+    "@expo/config-plugins": {
+      "optional": true
+    }
+  },
   "prettier": {
     "quoteProps": "consistent",
     "singleQuote": true,

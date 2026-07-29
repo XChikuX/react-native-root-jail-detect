@@ -53,9 +53,9 @@ namespace margelo::nitro::rootjaildetect {
     }
   }
 
-  std::shared_ptr<Promise<DeviceRiskResult>> HybridRootJailDetect::checkDetailed() {
+  std::shared_ptr<Promise<CompromiseAssessment>> HybridRootJailDetect::checkDetailed() {
     std::shared_ptr<RootJailDetectConfiguration> configuration = _configuration;
-    return Promise<DeviceRiskResult>::async([configuration]() -> DeviceRiskResult {
+    return Promise<CompromiseAssessment>::async([configuration]() -> CompromiseAssessment {
       ResolvedRootJailDetectOptions options;
       {
         std::scoped_lock lock(configuration->mutex);

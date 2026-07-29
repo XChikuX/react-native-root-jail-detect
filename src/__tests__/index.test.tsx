@@ -63,6 +63,7 @@ const {
   isDebuggerAttached,
   getDetectionReasons,
   checkDetailed,
+  assessRisk,
   configure,
   startSecurityWatchdog,
   stopSecurityWatchdog,
@@ -76,7 +77,7 @@ function setPlatform(os: 'android' | 'ios'): void {
   });
 }
 
-/** Build a clean stub {@linkcode DeviceRiskResult} with overrides. */
+/** Build a clean stub {@linkcode CompromiseAssessment} with overrides. */
 function stubResult(overrides: Record<string, unknown> = {}) {
   return {
     platform: 'android',
@@ -87,6 +88,24 @@ function stubResult(overrides: Record<string, unknown> = {}) {
     debuggerDetected: false,
     elapsedMs: 0,
     partial: false,
+    ...overrides,
+  };
+}
+
+/** Build a stub signal with the richer v2.1 shape. */
+function stubSignal(
+  id: string,
+  overrides: Record<string, unknown> = {}
+) {
+  const [prefix] = id.split('.');
+  return {
+    id,
+    platform: prefix === 'ios' ? 'ios' : 'android',
+    category: 'filesystem',
+    severity: 'low',
+    score: 10,
+    detected: true,
+    reliability: 0.5,
     ...overrides,
   };
 }
@@ -122,11 +141,7 @@ describe('@psync/anti-jailbreak wrappers', () => {
       mockCheckDetailed.mockResolvedValue(
         stubResult({
           signals: [
-            {
-              id: 'android.emulator',
-              severity: 'medium',
-              score: 15,
-            },
+            stubSignal('android.emulator', { severity: 'medium', score: 15 }),
           ],
         })
       );
@@ -139,11 +154,7 @@ describe('@psync/anti-jailbreak wrappers', () => {
         stubResult({
           platform: 'ios',
           signals: [
-            {
-              id: 'ios.simulator',
-              severity: 'medium',
-              score: 15,
-            },
+            stubSignal('ios.simulator', { severity: 'medium', score: 15 }),
           ],
         })
       );
@@ -175,24 +186,21 @@ describe('@psync/anti-jailbreak wrappers', () => {
       mockCheckDetailed.mockResolvedValue(
         stubResult({
           signals: [
-            {
-              id: 'android.su.binary',
+            stubSignal('android.su.binary', {
               severity: 'low',
               score: 10,
               evidence: 'su binary present',
-            },
-            {
-              id: 'android.maps.zygisk',
+            }),
+            stubSignal('android.maps.zygisk', {
               severity: 'high',
               score: 30,
-              // no evidence -> falls back to the stable reason catalog
-            },
-            {
-              id: 'android.check.selinux',
+              category: 'injection',
+            }),
+            stubSignal('android.check.selinux', {
               severity: 'high',
               score: 25,
               unavailable: true, // must be skipped
-            },
+            }),
           ],
         })
       );
@@ -206,18 +214,16 @@ describe('@psync/anti-jailbreak wrappers', () => {
       mockCheckDetailed.mockResolvedValue(
         stubResult({
           signals: [
-            {
-              id: 'android.su.binary',
+            stubSignal('android.su.binary', {
               severity: 'low',
               score: 10,
               evidence: 'duplicate',
-            },
-            {
-              id: 'android.su.alt',
+            }),
+            stubSignal('android.su.alt', {
               severity: 'low',
               score: 10,
               evidence: 'duplicate',
-            },
+            }),
           ],
         })
       );
@@ -237,12 +243,38 @@ describe('@psync/anti-jailbreak wrappers', () => {
       await expect(checkDetailed()).resolves.toBe(result);
     });
 
+    it('assessRisk() is an alias for checkDetailed()', async () => {
+      const result = stubResult({ score: 42, confidence: 'extreme' });
+      mockCheckDetailed.mockResolvedValue(result);
+      await expect(assessRisk()).resolves.toBe(result);
+    });
+
     it('forwards options to configure()', () => {
       configure({ minScore: 50, timeoutMs: 600 });
       expect(mockConfigure).toHaveBeenCalledWith({
         minScore: 50,
         timeoutMs: 600,
       });
+    });
+
+    it('supports the richer signal shape (platform, category, detected, reliability)', async () => {
+      const result = stubResult({
+        signals: [
+          stubSignal('android.mount.magisk', {
+            category: 'mount',
+            severity: 'high',
+            score: 35,
+            reliability: 0.85,
+          }),
+        ],
+      });
+      mockCheckDetailed.mockResolvedValue(result);
+      const detailed = await checkDetailed();
+      const signal = detailed.signals[0];
+      expect(signal.platform).toBe('android');
+      expect(signal.category).toBe('mount');
+      expect(signal.detected).toBe(true);
+      expect(signal.reliability).toBe(0.85);
     });
   });
 

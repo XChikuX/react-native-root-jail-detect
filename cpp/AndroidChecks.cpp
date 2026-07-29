@@ -39,7 +39,11 @@ namespace margelo::nitro::rootjaildetect {
         // and the id is still visible for debugging.
         return DetectionSignal(
           std::string(id),
+          platformForSignal(id),
+          SignalCategory::DEBUGGER,
           Severity::LOW,
+          0.0,
+          true,
           0.0,
           includeEvidence ? std::optional<std::string>(evidence) : std::nullopt,
           std::nullopt
@@ -47,15 +51,29 @@ namespace margelo::nitro::rootjaildetect {
       }
       return DetectionSignal(
         std::string(spec->id),
+        platformForSignal(spec->id),
+        spec->category,
         spec->severity,
         spec->score,
+        true,
+        spec->reliability,
         includeEvidence ? std::optional<std::string>(evidence) : std::nullopt,
         std::nullopt
       );
     }
 
     DetectionSignal unavailableSignal(std::string_view id) noexcept {
-      return DetectionSignal(std::string(id), Severity::LOW, 0.0, std::nullopt, true);
+      return DetectionSignal(
+        std::string(id),
+        platformForSignal(id),
+        SignalCategory::DEBUGGER,
+        Severity::LOW,
+        0.0,
+        false,
+        0.0,
+        std::nullopt,
+        true
+      );
     }
 
     bool expired(std::chrono::steady_clock::time_point deadline) noexcept {
@@ -194,16 +212,12 @@ namespace margelo::nitro::rootjaildetect {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_RUNTIME));
       result.partial = true;
     } else {
+      // Probe returns one finding per responding port; an empty list means no
+      // loopback service answered and there is nothing to report here. The
+      // unavailable marker for this step reuses `ANDROID_CHECK_RUNTIME` until a
+      // dedicated `ANDROID_CHECK_NETWORK` id is added to the public catalog.
       std::vector<ProcFinding> networkFindings = probeDefaultLocalTcpServices(deadline);
-      if (networkFindings.empty() &&
-          std::find_if(result.signals.begin(), result.signals.end(),
-                       [](const DetectionSignal& s) {
-                         return s.id == SignalId::ANDROID_CHECK_RUNTIME;
-                       }) == result.signals.end()) {
-        // Probing ports gave no additional signal; nothing to report.
-      } else {
-        appendFindings(result.signals, networkFindings, includeEvidence);
-      }
+      appendFindings(result.signals, networkFindings, includeEvidence);
     }
 
     return result;

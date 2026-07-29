@@ -40,9 +40,9 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 
 ### Public JavaScript/TypeScript API
 
-- `src/specs/RootJailDetect.nitro.ts` — root HybridObject Nitro spec (`configure`, `checkDetailed`, `getWatchdog`). Source of truth for the native contract.
+- `src/specs/RootJailDetect.nitro.ts` — root HybridObject Nitro spec (`configure`, `checkDetailed`/`assessRisk`, `getWatchdog`). Source of truth for the native contract.
 - `src/specs/SecurityWatchdog.nitro.ts` — watchdog HybridObject Nitro spec (`start`, `stop`, `isRunning`).
-- `src/specs/*.ts` — named codegen types (`DeviceRiskResult`, `DetectionSignal`, `Severity`, `Confidence`, `Platform`, `ProtectionMode`, `RootJailDetectOptions`, `SecurityWatchdogOptions`). Each lives in its own file because Nitro requires named types for native codegen.
+- `src/specs/*.ts` — named codegen types (`CompromiseAssessment`, `DeviceRiskResult`, `DetectionSignal`, `Severity`, `Confidence`, `Platform`, `ProtectionMode`, `RootJailDetectOptions`, `SecurityWatchdogOptions`, `SignalCategory`). Each lives in its own file because Nitro requires named types for native codegen.
 - `src/specs/index.ts` — barrel re-exporting all spec types (specs themselves must not re-export unrelated types).
 - `src/wrappers.ts` — legacy boolean API (`isDeviceCompromised`, `isEmulator`, `isDebuggerAttached`, `getDetectionReasons`, `startSecurityWatchdog`, `stopSecurityWatchdog`) implemented as thin wrappers over `checkDetailed()`. Owns the lazily-created root HybridObject handle.
 - `src/index.tsx` — public entry point, barrel only (no logic; re-exports wrappers and spec types, plus a backwards-compatible default object).
@@ -105,7 +105,9 @@ Consumer
     -> Shared C++ platform runner: AndroidChecks.cpp on Android, IOSChecks.cpp on iOS
 ```
 
-`checkDetailed()` is the primary, structured API and returns a `DeviceRiskResult` (score, signals, confidence, debugger state, partial flag). The legacy boolean wrappers are derived from it so all detection logic lives in one place.
+`checkDetailed()` is the primary, structured API and returns a `CompromiseAssessment` (score, signals, confidence `'low'|'medium'|'high'|'extreme'`, debugger state, partial flag). `DeviceRiskResult` is kept as a deprecated type alias for backwards compatibility. `assessRisk()` is an alias for `checkDetailed()`. The legacy boolean wrappers are derived from the assessment so all detection logic lives in one place.
+
+`DetectionSignal` carries extra context helpful for UI, analytics, and issue triage: `platform`, `category` (`filesystem`, `mount`, `injection`, `debugger`, `emulator`, `hooking`, `runtime`, `integrity`, `volume`, `urlScheme`, `info`, ...), `detected`, and a `reliability` score `0..1`. Unavailable checks are represented as signals with `detected: false` and `unavailable: true`.
 
 **Implementation status:** the Android scored baseline (PLAN.md Phase 1) lives in shared C++ — `/proc/self/maps`, `/proc/self/mountinfo` + `/proc/self/mounts`, `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties, runtime instrumentation (Frida cmdline + local socket), and `TracerPid` as informational. iOS Phase 1 checks (jailbreak artifact paths, `_dyld` loaded-image scan, `sysctl` debugger state, simulator flag) live in shared C++ at `cpp/IOSChecks.cpp`; the `ios/` directory is reserved for future Swift edge HybridObjects and is currently empty. The security watchdog has its real background loop in `cpp/HybridSecurityWatchdog.cpp`. The C++ is not Windows-compilable — a Gradle build with the NDK must be run on macOS/Linux/WSL for native validation before publishing.
 

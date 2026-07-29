@@ -13,7 +13,7 @@ import type { UrlSchemeOptions } from './UrlSchemeOptions';
 export interface RootJailDetectOptions {
   /**
    * Minimum aggregated risk score (0-100) at which
-   * {@linkcode DeviceRiskResult.compromised} is reported as `true`.
+   * {@linkcode CompromiseAssessment.compromised} is reported as `true`.
    *
    * @default 40
    */
@@ -22,7 +22,7 @@ export interface RootJailDetectOptions {
    * Total wall-clock budget for one detection pass, in milliseconds. Individual
    * checks also have per-check deadlines. Checks that cannot complete within
    * the budget report an {@linkcode DetectionSignal.unavailable} signal and
-   * the result is marked {@linkcode DeviceRiskResult.partial}.
+   * the result is marked {@linkcode CompromiseAssessment.partial}.
    *
    * @default 400
    */
@@ -37,8 +37,8 @@ export interface RootJailDetectOptions {
    */
   includeEvidence?: boolean;
   /**
-   * When `true`, fold debugger attachment into {@linkcode DeviceRiskResult.compromised}
-   * in addition to reporting it on {@linkcode DeviceRiskResult.debuggerDetected}.
+   * When `true`, fold debugger attachment into {@linkcode CompromiseAssessment.compromised}
+   * in addition to reporting it on {@linkcode CompromiseAssessment.debuggerDetected}.
    * Off by default because a debugger is a normal part of development and is
    * not, by itself, proof of an attack.
    *

@@ -39,7 +39,11 @@ namespace margelo::nitro::rootjaildetect {
       if (!spec.has_value()) {
         return DetectionSignal(
           std::string(id),
+          platformForSignal(id),
+          SignalCategory::DEBUGGER,
           Severity::LOW,
+          0.0,
+          true,
           0.0,
           includeEvidence ? std::optional<std::string>(evidence) : std::nullopt,
           std::nullopt
@@ -47,15 +51,29 @@ namespace margelo::nitro::rootjaildetect {
       }
       return DetectionSignal(
         std::string(spec->id),
+        platformForSignal(spec->id),
+        spec->category,
         spec->severity,
         spec->score,
+        true,
+        spec->reliability,
         includeEvidence ? std::optional<std::string>(evidence) : std::nullopt,
         std::nullopt
       );
     }
 
     DetectionSignal unavailableSignal(std::string_view id) noexcept {
-      return DetectionSignal(std::string(id), Severity::LOW, 0.0, std::nullopt, true);
+      return DetectionSignal(
+        std::string(id),
+        platformForSignal(id),
+        SignalCategory::DEBUGGER,
+        Severity::LOW,
+        0.0,
+        false,
+        0.0,
+        std::nullopt,
+        true
+      );
     }
 
     bool expired(std::chrono::steady_clock::time_point deadline) noexcept {

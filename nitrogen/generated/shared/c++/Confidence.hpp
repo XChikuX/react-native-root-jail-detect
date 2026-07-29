@@ -32,6 +32,7 @@ namespace margelo::nitro::rootjaildetect {
     LOW      SWIFT_NAME(low) = 0,
     MEDIUM      SWIFT_NAME(medium) = 1,
     HIGH      SWIFT_NAME(high) = 2,
+    EXTREME      SWIFT_NAME(extreme) = 3,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::rootjaildetect
@@ -47,6 +48,7 @@ namespace margelo::nitro {
         case hashString("low"): return margelo::nitro::rootjaildetect::Confidence::LOW;
         case hashString("medium"): return margelo::nitro::rootjaildetect::Confidence::MEDIUM;
         case hashString("high"): return margelo::nitro::rootjaildetect::Confidence::HIGH;
+        case hashString("extreme"): return margelo::nitro::rootjaildetect::Confidence::EXTREME;
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert \"" + unionValue + "\" to enum Confidence - invalid value!");
       }
@@ -56,6 +58,7 @@ namespace margelo::nitro {
         case margelo::nitro::rootjaildetect::Confidence::LOW: return JSIConverter<std::string>::toJSI(runtime, "low");
         case margelo::nitro::rootjaildetect::Confidence::MEDIUM: return JSIConverter<std::string>::toJSI(runtime, "medium");
         case margelo::nitro::rootjaildetect::Confidence::HIGH: return JSIConverter<std::string>::toJSI(runtime, "high");
+        case margelo::nitro::rootjaildetect::Confidence::EXTREME: return JSIConverter<std::string>::toJSI(runtime, "extreme");
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert Confidence to JS - invalid value: "
                                     + std::to_string(static_cast<int>(arg)) + "!");
@@ -70,6 +73,7 @@ namespace margelo::nitro {
         case hashString("low"):
         case hashString("medium"):
         case hashString("high"):
+        case hashString("extreme"):
           return true;
         default:
           return false;

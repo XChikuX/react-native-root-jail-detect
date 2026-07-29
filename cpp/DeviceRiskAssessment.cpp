@@ -12,7 +12,7 @@
 
 namespace margelo::nitro::rootjaildetect {
 
-  DeviceRiskResult assessDevice(const ResolvedRootJailDetectOptions& options) {
+  CompromiseAssessment assessDevice(const ResolvedRootJailDetectOptions& options) {
     // Play Integrity token acquisition requires a server-issued nonce and is
     // intentionally kept out of this local assessment pass.
     (void) options.enablePlayIntegrity;
@@ -46,7 +46,7 @@ namespace margelo::nitro::rootjaildetect {
     const bool compromised = aggregated.score >= options.minScore ||
                              (options.treatDebuggerAsCompromise && nativeResult.debuggerDetected);
 
-    return DeviceRiskResult(
+    return CompromiseAssessment(
       platform,
       compromised,
       aggregated.score,

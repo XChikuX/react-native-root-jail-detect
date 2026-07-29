@@ -18,7 +18,7 @@ import type { Platform } from './Platform';
  *
  * @see {@linkcode RootJailDetect.checkDetailed}
  */
-export interface DeviceRiskResult {
+export interface CompromiseAssessment {
   /**
    * Platform the result was produced on. Mirrors `Platform.OS` so a result
    * serialized and sent to a backend carries its origin.
@@ -38,6 +38,11 @@ export interface DeviceRiskResult {
   score: number;
   /**
    * How complete and trustworthy the signal set is. See {@linkcode Confidence}.
+   *
+   * `extreme` is reserved for results where multiple high-severity signals
+   * from independent categories fire and the score is near the top of the
+   * range — a strong local indicator that should still be cross-checked
+   * server-side.
    */
   confidence: Confidence;
   /**
@@ -68,3 +73,10 @@ export interface DeviceRiskResult {
    */
   partial: boolean;
 }
+
+/**
+ * @deprecated Use {@linkcode CompromiseAssessment} instead. `DeviceRiskResult`
+ * is kept as a type alias for backwards compatibility.
+ */
+export type DeviceRiskResult = CompromiseAssessment;
+

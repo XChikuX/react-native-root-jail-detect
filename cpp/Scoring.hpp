@@ -2,8 +2,8 @@
 /// Scoring.hpp
 ///
 /// Pure aggregation of fired signals into the scored fields of
-/// `DeviceRiskResult`. Kept header-only and side-effect-free so it is trivially
-/// unit-testable with fixture signals.
+/// `CompromiseAssessment`. Kept header-only and side-effect-free so it is
+/// trivially unit-testable with fixture signals.
 ///
 /// Rules (see `PLAN.md` -> Risk model):
 ///   - Each signal id is counted at most once (equivalent evidence is not
@@ -12,16 +12,18 @@
 ///   - `unavailable` signals contribute no score and must not raise confidence.
 ///   - The total score is the sum of contributing signal weights, clamped to
 ///     [0, 100].
-///   - Confidence is derived from the strongest contributing signal, not from
-///     the raw count, so a single high-severity hit is enough to be `MEDIUM`.
+///   - Confidence is derived from the strongest contributing signal and from
+///     the diversity of independent evidence.
 ///
 
 #pragma once
 
 #include "Confidence.hpp"
 #include "DetectionSignal.hpp"
+#include "SignalCategory.hpp"
 
 #include <algorithm>
+#include <set>
 #include <vector>
 
 namespace margelo::nitro::rootjaildetect {
@@ -83,7 +85,7 @@ namespace margelo::nitro::rootjaildetect {
       }
     }
 
-    // Map the highest-severity contributor to a confidence level.
+    // Map the highest-severity contributor to a base confidence level.
     result.confidence = detail::severityToConfidence(highestSeverity);
 
     // Clamp to the documented 0-100 range. Negative weights are not part of the
@@ -94,19 +96,38 @@ namespace margelo::nitro::rootjaildetect {
       result.score = 100.0;
     }
 
-    // Promote confidence: any HIGH signal implies at least MEDIUM confidence,
-    // and reaching the MEDIUM severity band also implies MEDIUM. We only report
-    // HIGH confidence when multiple distinct high-severity signals fire, which
-    // is a stronger indicator than a single (possibly spoofable) hit.
+    // Promote confidence based on the strength and diversity of signals.
+    // A single high-severity hit is enough for MEDIUM; multiple high-severity
+    // hits raise it to HIGH; multiple high-severity hits across independent
+    // categories with a score near the top of the range qualify as EXTREME.
     if (highestSeverity == Severity::HIGH) {
-      result.confidence = Confidence::MEDIUM;
       size_t highCount = 0;
+      std::set<SignalCategory> highCategories;
       for (const DetectionSignal& signal : result.contributing) {
         if (signal.severity == Severity::HIGH) {
           ++highCount;
+          highCategories.insert(signal.category);
         }
       }
+
       if (highCount >= 2) {
+        result.confidence = Confidence::HIGH;
+      } else {
+        result.confidence = Confidence::MEDIUM;
+      }
+
+      if (highCategories.size() >= 2 && highCount >= 2 && result.score >= 80.0) {
+        result.confidence = Confidence::EXTREME;
+      }
+    } else if (highestSeverity == Severity::MEDIUM) {
+      // Multiple distinct medium-severity signals are more trustworthy than one.
+      size_t mediumCount = 0;
+      for (const DetectionSignal& signal : result.contributing) {
+        if (signal.severity == Severity::MEDIUM) {
+          ++mediumCount;
+        }
+      }
+      if (mediumCount >= 2) {
         result.confidence = Confidence::HIGH;
       }
     }

@@ -16,6 +16,7 @@ namespace margelo::nitro::rootjaildetect {
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridMethod("configure", &HybridRootJailDetectSpec::configure);
       prototype.registerHybridMethod("checkDetailed", &HybridRootJailDetectSpec::checkDetailed);
+      prototype.registerHybridMethod("assessRisk", &HybridRootJailDetectSpec::assessRisk);
       prototype.registerHybridMethod("getWatchdog", &HybridRootJailDetectSpec::getWatchdog);
     });
   }

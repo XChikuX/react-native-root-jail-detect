@@ -8,6 +8,7 @@
 // See PLAN.md for the full API contract and error semantics.
 
 export type {
+  CompromiseAssessment,
   Confidence,
   DetectionSignal,
   DeviceRiskResult,
@@ -16,5 +17,6 @@ export type {
   RootJailDetectOptions,
   SecurityWatchdogOptions,
   Severity,
+  SignalCategory,
   UrlSchemeOptions,
 } from './specs';

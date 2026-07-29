@@ -16,8 +16,11 @@
 
 #pragma once
 
+#include "Platform.hpp"
 #include "Severity.hpp"
+#include "SignalCategory.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -138,17 +141,25 @@ namespace margelo::nitro::rootjaildetect {
     inline constexpr std::string_view IOS_DEBUGGER_SYSCTL = "ios.debugger.sysctl";
   } // namespace SignalId
 
-  /// Default weight and severity for a signal id. The weight is the value this
-  /// signal contributes to the aggregated risk score before clamping to 100.
+  /// Default weight, severity, category, and reliability for a signal id. The
+  /// weight is the value this signal contributes to the aggregated risk score
+  /// before clamping to 100; reliability is a 0-1 hint for backend policy.
   struct SignalSpec final {
     std::string_view id;
     Severity severity;
+    SignalCategory category;
     double score;
+    double reliability;
   };
 
   /// Look up the default {@link SignalSpec} for an id. Returns `std::nullopt`
   /// for unknown ids so callers cannot accidentally invent weights for ids that
   /// are not part of the public catalog.
   std::optional<SignalSpec> lookupSignal(std::string_view id) noexcept;
+
+  /// Derive the platform prefix from a signal id (e.g. `android.maps.zygisk`
+  /// -> Platform::ANDROID). Unpublished ids fall back to ANDROID so the result
+  /// stays well-formed without inventing metadata.
+  Platform platformForSignal(std::string_view id) noexcept;
 
 } // namespace margelo::nitro::rootjaildetect

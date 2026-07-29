@@ -28,10 +28,16 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `Platform` to properly resolve imports.
+namespace margelo::nitro::rootjaildetect { enum class Platform; }
+// Forward declaration of `SignalCategory` to properly resolve imports.
+namespace margelo::nitro::rootjaildetect { enum class SignalCategory; }
 // Forward declaration of `Severity` to properly resolve imports.
 namespace margelo::nitro::rootjaildetect { enum class Severity; }
 
 #include <string>
+#include "Platform.hpp"
+#include "SignalCategory.hpp"
 #include "Severity.hpp"
 #include <optional>
 
@@ -43,14 +49,18 @@ namespace margelo::nitro::rootjaildetect {
   struct DetectionSignal final {
   public:
     std::string id     SWIFT_PRIVATE;
+    Platform platform     SWIFT_PRIVATE;
+    SignalCategory category     SWIFT_PRIVATE;
     Severity severity     SWIFT_PRIVATE;
     double score     SWIFT_PRIVATE;
+    bool detected     SWIFT_PRIVATE;
+    double reliability     SWIFT_PRIVATE;
     std::optional<std::string> evidence     SWIFT_PRIVATE;
     std::optional<bool> unavailable     SWIFT_PRIVATE;
 
   public:
     DetectionSignal() = default;
-    explicit DetectionSignal(std::string id, Severity severity, double score, std::optional<std::string> evidence, std::optional<bool> unavailable): id(id), severity(severity), score(score), evidence(evidence), unavailable(unavailable) {}
+    explicit DetectionSignal(std::string id, Platform platform, SignalCategory category, Severity severity, double score, bool detected, double reliability, std::optional<std::string> evidence, std::optional<bool> unavailable): id(id), platform(platform), category(category), severity(severity), score(score), detected(detected), reliability(reliability), evidence(evidence), unavailable(unavailable) {}
 
   public:
     friend bool operator==(const DetectionSignal& lhs, const DetectionSignal& rhs) = default;
@@ -67,8 +77,12 @@ namespace margelo::nitro {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::rootjaildetect::DetectionSignal(
         JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "id"))),
+        JSIConverter<margelo::nitro::rootjaildetect::Platform>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "platform"))),
+        JSIConverter<margelo::nitro::rootjaildetect::SignalCategory>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "category"))),
         JSIConverter<margelo::nitro::rootjaildetect::Severity>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "severity"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "score"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "detected"))),
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "reliability"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "evidence"))),
         JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "unavailable")))
       );
@@ -76,8 +90,12 @@ namespace margelo::nitro {
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::rootjaildetect::DetectionSignal& arg) {
       jsi::Object obj(runtime);
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "id"), JSIConverter<std::string>::toJSI(runtime, arg.id));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "platform"), JSIConverter<margelo::nitro::rootjaildetect::Platform>::toJSI(runtime, arg.platform));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "category"), JSIConverter<margelo::nitro::rootjaildetect::SignalCategory>::toJSI(runtime, arg.category));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "severity"), JSIConverter<margelo::nitro::rootjaildetect::Severity>::toJSI(runtime, arg.severity));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "score"), JSIConverter<double>::toJSI(runtime, arg.score));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "detected"), JSIConverter<bool>::toJSI(runtime, arg.detected));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "reliability"), JSIConverter<double>::toJSI(runtime, arg.reliability));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "evidence"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.evidence));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "unavailable"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.unavailable));
       return obj;
@@ -91,8 +109,12 @@ namespace margelo::nitro {
         return false;
       }
       if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "id")))) return false;
+      if (!JSIConverter<margelo::nitro::rootjaildetect::Platform>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "platform")))) return false;
+      if (!JSIConverter<margelo::nitro::rootjaildetect::SignalCategory>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "category")))) return false;
       if (!JSIConverter<margelo::nitro::rootjaildetect::Severity>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "severity")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "score")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "detected")))) return false;
+      if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "reliability")))) return false;
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "evidence")))) return false;
       if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "unavailable")))) return false;
       return true;

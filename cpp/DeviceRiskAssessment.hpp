@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "DeviceRiskResult.hpp"
+#include "CompromiseAssessment.hpp"
 
 #include <mutex>
 #include <string>
@@ -31,6 +31,6 @@ namespace margelo::nitro::rootjaildetect {
     ResolvedRootJailDetectOptions options;
   };
 
-  DeviceRiskResult assessDevice(const ResolvedRootJailDetectOptions& options);
+  CompromiseAssessment assessDevice(const ResolvedRootJailDetectOptions& options);
 
 } // namespace margelo::nitro::rootjaildetect

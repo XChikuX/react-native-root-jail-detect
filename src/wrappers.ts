@@ -2,7 +2,7 @@ import { NitroModules } from 'react-native-nitro-modules';
 import { Platform } from 'react-native';
 
 import type {
-  DeviceRiskResult,
+  CompromiseAssessment,
   ProtectionMode,
   RootJailDetect,
   RootJailDetectOptions,
@@ -69,13 +69,22 @@ export function configure(options: RootJailDetectOptions): void {
 
 /**
  * Run every enabled device-risk check within the configured timeout budget
- * and return the full, structured {@linkcode DeviceRiskResult}.
+ * and return the full, structured {@linkcode CompromiseAssessment}.
  *
  * This is the primary API. The legacy boolean wrappers below are derived from
  * it. Checks that cannot complete in time surface as `unavailable` signals and
  * the result is marked `partial: true` rather than throwing.
  */
-export async function checkDetailed(): Promise<DeviceRiskResult> {
+export async function checkDetailed(): Promise<CompromiseAssessment> {
+  return getRoot().checkDetailed();
+}
+
+/**
+ * Alias for {@linkcode checkDetailed}. Provided for callers that prefer the
+ * `assess*` verb in security-policy code. There is no behavioral difference;
+ * both names invoke the same native pass.
+ */
+export async function assessRisk(): Promise<CompromiseAssessment> {
   return getRoot().checkDetailed();
 }
 
@@ -83,7 +92,7 @@ export async function checkDetailed(): Promise<DeviceRiskResult> {
  * Checks if the device is compromised (rooted on Android, jailbroken on iOS).
  *
  * Thin wrapper over {@linkcode checkDetailed}: resolves to the
- * {@linkcode DeviceRiskResult.compromised} boolean. Preserves the legacy error
+ * {@linkcode CompromiseAssessment.compromised} boolean. Preserves the legacy error
  * semantics — native errors are logged and rethrown, not swallowed.
  *
  * @returns Promise that resolves to `true` if the device is compromised.
@@ -132,7 +141,7 @@ export async function isEmulator(): Promise<boolean> {
  * Checks if a debugger is currently attached to the process.
  *
  * Thin wrapper over {@linkcode checkDetailed}: resolves to
- * {@linkcode DeviceRiskResult.debuggerDetected}. Preserves the legacy error
+ * {@linkcode CompromiseAssessment.debuggerDetected}. Preserves the legacy error
  * semantics — native errors are logged and a safe `false` fallback is returned.
  *
  * @returns Promise that resolves to `true` if a debugger is attached.

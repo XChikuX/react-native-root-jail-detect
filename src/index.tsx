@@ -12,19 +12,23 @@
 // not need to change call sites.
 
 export type {
+  CompromiseAssessment,
   Confidence,
   DetectionSignal,
   DeviceRiskResult,
   Platform,
   ProtectionMode,
+  RootJailDetect,
   RootJailDetectOptions,
+  SecurityWatchdog,
   SecurityWatchdogOptions,
   Severity,
+  SignalCategory,
+  UrlSchemeOptions,
 } from './specs';
 
-export type { RootJailDetect, SecurityWatchdog } from './specs';
-
 export {
+  assessRisk,
   checkDetailed,
   configure,
   getDetectionReasons,
@@ -40,6 +44,7 @@ export type { LegacySecurityWatchdogOptions } from './wrappers';
 // Backwards-compatible default export. Existing consumers that import the
 // default object keep working unchanged.
 import {
+  assessRisk as _assessRisk,
   checkDetailed as _checkDetailed,
   configure as _configure,
   getDetectionReasons as _getDetectionReasons,
@@ -51,6 +56,7 @@ import {
 } from './wrappers';
 
 export default {
+  assessRisk: _assessRisk,
   checkDetailed: _checkDetailed,
   configure: _configure,
   getDetectionReasons: _getDetectionReasons,

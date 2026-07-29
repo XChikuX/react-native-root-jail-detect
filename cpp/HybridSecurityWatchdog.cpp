@@ -125,7 +125,7 @@ namespace margelo::nitro::rootjaildetect {
         options = _configuration->options;
       }
 
-      const DeviceRiskResult result = assessDevice(options);
+      const CompromiseAssessment result = assessDevice(options);
       if (result.compromised) {
         switch (_protectionMode) {
           case ProtectionMode::LOG_ONLY:

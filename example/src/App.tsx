@@ -12,7 +12,7 @@ import {
 import {
   checkDetailed,
   getDetectionReasons,
-  type DeviceRiskResult,
+  type CompromiseAssessment,
 } from '@psync/anti-jailbreak';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,7 +22,7 @@ function App() {
   const [isEmu, setIsEmu] = useState<boolean | null>(null);
   const [isDebugger, setIsDebugger] = useState<boolean | null>(null);
   const [detectionReasons, setDetectionReasons] = useState<string[]>([]);
-  const [detailed, setDetailed] = useState<DeviceRiskResult | null>(null);
+  const [detailed, setDetailed] = useState<CompromiseAssessment | null>(null);
 
   const checkDeviceSecurity = async () => {
     setLoading(true);

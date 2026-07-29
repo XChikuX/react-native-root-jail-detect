@@ -39,15 +39,21 @@ namespace margelo::nitro::rootjaildetect {
       {"lsposed",       SignalId::ANDROID_MAPS_LSPOSED},
       {"xposed",        SignalId::ANDROID_MAPS_LSPOSED},
       // Frida agent and its well-known thread/pipe artifacts.
-      {"frida",         SignalId::ANDROID_MAPS_FRIDA},
-      {"frida-agent",   SignalId::ANDROID_MAPS_FRIDA},
-      {"gum-js-loop",   SignalId::ANDROID_MAPS_FRIDA},
-      {"gmain",         SignalId::ANDROID_MAPS_FRIDA},
-      {"linjector",     SignalId::ANDROID_MAPS_FRIDA},
-      {"pool-frida",    SignalId::ANDROID_MAPS_FRIDA},
+      {"frida",           SignalId::ANDROID_MAPS_FRIDA},
+      {"frida-agent",     SignalId::ANDROID_MAPS_FRIDA},
+      {"gum-js-loop",     SignalId::ANDROID_MAPS_FRIDA},
+      {"gmain",           SignalId::ANDROID_MAPS_FRIDA},
+      {"linjector",       SignalId::ANDROID_MAPS_FRIDA},
+      {"pool-frida",      SignalId::ANDROID_MAPS_FRIDA},
+      // Renamed Frida gadgets. These are intentionally specific to keep false
+      // positives low; "libhelper" and "gadget" are meaningful only as mapped
+      // module names in memory, not as generic substrings in unrelated text.
+      {"libgadget",       SignalId::ANDROID_MAPS_FRIDA},
+      {"gadget.so",       SignalId::ANDROID_MAPS_FRIDA},
+      {"libhelper.so",    SignalId::ANDROID_MAPS_FRIDA},
       // Riru (legacy Magisk module framework, predecessor of Zygisk).
-      {"libriru",       SignalId::ANDROID_MAPS_RIRU},
-      {"riru",          SignalId::ANDROID_MAPS_RIRU},
+      {"libriru",         SignalId::ANDROID_MAPS_RIRU},
+      {"riru",            SignalId::ANDROID_MAPS_RIRU},
     };
 
     // Tokens that, when seen in mount metadata, strongly suggest a root

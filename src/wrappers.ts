@@ -49,6 +49,10 @@ const signalReasons: Record<string, string> = {
   'ios.debugger.sysctl': 'Process state indicates a debugger is attached (sysctl).',
   'ios.dyld.hook': 'A suspicious runtime hook image is loaded.',
   'ios.jailbreak.artifact': 'A known jailbreak artifact is accessible.',
+  'ios.jailbreak.rootless': 'A rootless jailbreak bootstrap artifact is present.',
+  'ios.jailbreak.dopamine': 'A Dopamine-specific artifact is present.',
+  'ios.jailbreak.palera1n': 'A palera1n-specific artifact is present.',
+  'ios.sideload.trollstore': 'A TrollStore-related artifact is present (sideloading tool, not a full jailbreak).',
   'ios.simulator': 'The app is running in the iOS simulator.',
 };
 

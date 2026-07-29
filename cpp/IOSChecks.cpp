@@ -74,20 +74,87 @@ namespace margelo::nitro::rootjaildetect {
       return result;
     }
 
+    // Classic jailbreak artifacts. A single positive hit is sufficient
+    // because all of these map to the same signal id; we never want to
+    // count equivalent filesystem evidence twice.
     constexpr const char* kJailbreakPaths[] = {
       "/private/jb",
       "/var/jb",
       "/Applications/Cydia.app",
       "/Library/MobileSubstrate/MobileSubstrate.dylib",
+      // Common rootless bootstrap prefixes / markers.
+      "/private/preboot/jb",
+      "/private/preboot/dopamine",
+      "/private/preboot/palera1n",
+      "/var/jb/.installed_dopamine",
+      "/var/jb/.installed_palera1n",
+      "/var/jb/usr/lib/TweakInject.dylib",
+      // TrollStore-related persistence helpers — separate signal, low FP when
+      // the file exists but it does not grant full jailbreak filesystem access.
+      "/var/containers/Bundle/trollstoreapp",
+      "/var/containers/Bundle/.trollstoreappinstalled",
     };
+
+    bool rootlessArtifactFound = false;
+    bool classicArtifactFound = false;
+    bool dopamineArtifactFound = false;
+    bool palera1nArtifactFound = false;
+    bool trollstoreArtifactFound = false;
+
     for (const char* path : kJailbreakPaths) {
       struct stat status {};
-      if (::stat(path, &status) == 0) {
-        result.signals.push_back(
-          buildSignal(SignalId::IOS_JAILBREAK_ARTIFACT, "known-jailbreak-artifact", includeEvidence)
-        );
-        break;
+      if (::stat(path, &status) != 0) {
+        continue;
       }
+      const std::string_view pv(path);
+      if (pv.find("/var/jb") != std::string_view::npos ||
+          pv.find("/private/preboot/jb") != std::string_view::npos) {
+        rootlessArtifactFound = true;
+      }
+      if (pv.find("dopamine") != std::string_view::npos ||
+          pv == "/var/jb/.installed_dopamine") {
+        dopamineArtifactFound = true;
+      }
+      if (pv.find("palera1n") != std::string_view::npos ||
+          pv == "/var/jb/.installed_palera1n") {
+        palera1nArtifactFound = true;
+      }
+      if (pv.find("trollstore") != std::string_view::npos) {
+        trollstoreArtifactFound = true;
+      }
+      if (!rootlessArtifactFound && !dopamineArtifactFound &&
+          !palera1nArtifactFound && !trollstoreArtifactFound) {
+        classicArtifactFound = true;
+      }
+    }
+
+    // Emit distinct, stable signal ids so callers can reason about the class of
+    // jailbreak profile observed. We report at most one rootless bootstrap signal
+    // plus profile-specific markers.
+    if (rootlessArtifactFound) {
+      result.signals.push_back(
+        buildSignal(SignalId::IOS_JAILBREAK_ROOTLESS, "rootless-bootstrap-artifact", includeEvidence)
+      );
+    }
+    if (dopamineArtifactFound) {
+      result.signals.push_back(
+        buildSignal(SignalId::IOS_JAILBREAK_DOPAMINE, "dopamine-artifact", includeEvidence)
+      );
+    }
+    if (palera1nArtifactFound) {
+      result.signals.push_back(
+        buildSignal(SignalId::IOS_JAILBREAK_PALERA1N, "palera1n-artifact", includeEvidence)
+      );
+    }
+    if (trollstoreArtifactFound) {
+      result.signals.push_back(
+        buildSignal(SignalId::IOS_SIDeload_TROLLSTORE, "trollstore-artifact", includeEvidence)
+      );
+    }
+    if (classicArtifactFound) {
+      result.signals.push_back(
+        buildSignal(SignalId::IOS_JAILBREAK_ARTIFACT, "known-jailbreak-artifact", includeEvidence)
+      );
     }
 
     if (expired(deadline)) {
@@ -96,16 +163,36 @@ namespace margelo::nitro::rootjaildetect {
       return result;
     }
 
+    // Injections frameworks and common renamed Frida gadget names. Tokens are
+    // specific enough to avoid most benign libraries while still catching the
+    // renamed artifacts commonly used to evade naive scans (e.g. `libgadget`,
+    // `libhelper`). The `gadget`/`libgadget` tokens map to the same Frida signal
+    // id as the explicit Frida string so the score does not double-count.
     for (uint32_t index = 0; index < _dyld_image_count(); ++index) {
       const char* image = _dyld_get_image_name(index);
       if (image == nullptr) {
         continue;
       }
       const std::string path(image);
-      if (path.find("MobileSubstrate") != std::string::npos || path.find("Substitute") != std::string::npos ||
-          path.find("Frida") != std::string::npos || path.find("libhooker") != std::string::npos) {
+      if (path.find("MobileSubstrate") != std::string::npos ||
+          path.find("Substitute") != std::string::npos ||
+          path.find("libhooker") != std::string::npos ||
+          path.find("ellekit") != std::string::npos ||
+          path.find("rosalie") != std::string::npos) {
         result.signals.push_back(
           buildSignal(SignalId::IOS_DYLD_HOOK, "suspicious-loaded-image", includeEvidence)
+        );
+        break;
+      }
+      // Frida / renamed gadget artifacts are reported under the same high-weight
+      // signal id as Android. Keep the substring list aligned with the rename
+      // patterns added to `ProcParsers.cpp` `K_HOOK_PATTERNS`.
+      if (path.find("Frida") != std::string::npos ||
+          path.find("frida") != std::string::npos ||
+          path.find("libgadget") != std::string::npos ||
+          path.find("gadget.dylib") != std::string::npos) {
+        result.signals.push_back(
+          buildSignal(SignalId::IOS_DYLD_HOOK, "frida-or-gadget-image", includeEvidence)
         );
         break;
       }

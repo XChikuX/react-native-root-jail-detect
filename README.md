@@ -148,8 +148,12 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | low | `android.build.test_keys` | 10 | `ro.build.tags` reports `test-keys` |
 | low | `android.mount.overlay` | 10 | Hidden mount overlay in app namespace |
 | informational | `android.debugger.tracerpid` | 0 | `TracerPid` non-zero (diagnostic) |
-| high | `ios.dyld.hook` | 30 | Suspicious injection framework loaded |
-| medium | `ios.jailbreak.artifact` | 20 | Jailbreak file or directory accessible |
+| high | `ios.dyld.hook` | 30 | Suspicious injection framework loaded (Frida, MobileSubstrate, Substitute, libhooker, ellekit, rosalie, renamed gadgets) |
+| medium | `ios.jailbreak.artifact` | 20 | Classic jailbreak file or directory accessible |
+| medium | `ios.jailbreak.rootless` | 20 | Rootless jailbreak bootstrap prefix present (e.g. `/var/jb`, `/private/preboot/jb`) |
+| medium | `ios.jailbreak.dopamine` | 20 | Dopamine-specific artifact present |
+| medium | `ios.jailbreak.palera1n` | 20 | palera1n-specific artifact present |
+| medium | `ios.sideload.trollstore` | 15 | TrollStore sideloading artifact present (not a jailbreak) |
 | medium | `ios.simulator` | 20 | iOS simulator environment |
 | informational | `ios.debugger.sysctl` | 0 | `sysctl` reports P_TRACED (diagnostic) |
 | low | `*.check.*` | 0 | Check timed out / unavailable (not compromise) |
@@ -160,6 +164,8 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 
 - **Client heuristics are non-authoritative:** Always bind sensitive decisions to short-lived server sessions with backend attestation (Play Integrity / App Attest).
 - **Legitimate custom ROMs & devs:** Unlocked bootloaders, `test-keys`, and permissive SELinux can occur on legitimate developer devices. Tune `minScore` appropriately.
+- **Rootless jailbreaks and TrollStore:** iOS rootless jailbreaks (Dopamine, palera1n) deliberately avoid classic paths and use `/var/jb` or `/private/preboot/...` prefixes. TrollStore is a sideloading tool, not a jailbreak, and is reported separately under `ios.sideload.trollstore`.
+- **Renamed Frida gadgets:** Memory-map and `_dyld` scans include common rename patterns (`libgadget`, `gadget.dylib`, etc.), but a determined attacker can rename further. Treat these as defensive signals, not proof.
 
 ---
 

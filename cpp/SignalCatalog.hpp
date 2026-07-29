@@ -89,10 +89,28 @@ namespace margelo::nitro::rootjaildetect {
     /// The iOS debugger check could not complete within the time budget.
     inline constexpr std::string_view IOS_CHECK_DEBUGGER = "ios.check.debugger";
 
-    // ---- iOS ----
-    inline constexpr std::string_view IOS_SIMULATOR = "ios.simulator";
-    inline constexpr std::string_view IOS_JAILBREAK_ARTIFACT = "ios.jailbreak.artifact";
+    // ---- iOS: high severity ----
+    /// Suspicious injection/hook library loaded (MobileSubstrate, Substitute,
+    /// Frida, libhooker, newer injection frameworks).
     inline constexpr std::string_view IOS_DYLD_HOOK = "ios.dyld.hook";
+
+    // ---- iOS: medium severity ----
+    /// Classic jailbreak artifact path or directory is accessible.
+    inline constexpr std::string_view IOS_JAILBREAK_ARTIFACT = "ios.jailbreak.artifact";
+    /// Rootless jailbreak bootstrap prefix is present (Dopamine, palera1n, etc.).
+    inline constexpr std::string_view IOS_JAILBREAK_ROOTLESS = "ios.jailbreak.rootless";
+    /// Dopamine-specific bootstrap marker present.
+    inline constexpr std::string_view IOS_JAILBREAK_DOPAMINE = "ios.jailbreak.dopamine";
+    /// palera1n-specific bootstrap marker present.
+    inline constexpr std::string_view IOS_JAILBREAK_PALERA1N = "ios.jailbreak.palera1n";
+    /// TrollStore persistence/helper presence. TrollStore is a sideloading tool,
+    /// not a jailbreak — its detection is intentionally a separate signal.
+    inline constexpr std::string_view IOS_SIDeload_TROLLSTORE = "ios.sideload.trollstore";
+    /// The app is running in the iOS simulator.
+    inline constexpr std::string_view IOS_SIMULATOR = "ios.simulator";
+
+    // ---- iOS: informational ----
+    /// `sysctl` reports P_TRACED for this process.
     inline constexpr std::string_view IOS_DEBUGGER_SYSCTL = "ios.debugger.sysctl";
   } // namespace SignalId
 

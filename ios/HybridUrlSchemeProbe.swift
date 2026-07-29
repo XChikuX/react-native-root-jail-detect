@@ -11,7 +11,7 @@ import NitroModules
  */
 public final class HybridUrlSchemeProbe: HybridUrlSchemeProbeSpec {
 
-  public init() { }
+  public override init() { }
 
   public func checkSchemes(schemes: [String]) throws -> [String] {
     var responding: [String] = []

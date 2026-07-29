@@ -234,6 +234,39 @@ describe('@psync/anti-jailbreak wrappers', () => {
       mockCheckDetailed.mockRejectedValue(new Error('native boom'));
       await expect(getDetectionReasons()).resolves.toEqual([]);
     });
+
+    it('returns human-readable text for every cataloged signal id', async () => {
+      // Regression: getDetectionReasons() used to fall back to the raw signal
+      // id for v0.3.0 entries that were missing from the JS-side catalog (the
+      // network probes, the dev-build property signals, and the *.check.*
+      // availability markers). Lock in human-readable text for every id.
+      const allIds = [
+        'android.network.frida',
+        'android.network.ssh',
+        'android.network.adb',
+        'android.build.debuggable',
+        'android.build.adb_root',
+        'android.build.ro_secure_zero',
+        'ios.network.frida',
+        'ios.network.ssh',
+      ];
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: allIds.map((id) => stubSignal(id)),
+        })
+      );
+      const reasons = await getDetectionReasons();
+      // Every id resolves to a non-empty human-readable string (not the raw id
+      // itself). Reasons are deduplicated by text — same evidence, same
+      // string — so we just assert each id produced text, not a 1:1 mapping.
+      for (const id of allIds) {
+        expect(reasons).toContainEqual(expect.stringMatching(/[A-Za-z]/));
+        // No reason equals the raw id (i.e. the fallback path was not taken).
+        expect(reasons).not.toContain(id);
+      }
+      // Sanity: at least one distinct reason per *unique reason text* class.
+      expect(new Set(reasons).size).toBeGreaterThanOrEqual(3);
+    });
   });
 
   describe('checkDetailed() and configure()', () => {

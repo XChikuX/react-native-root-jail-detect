@@ -25,7 +25,7 @@ namespace margelo::nitro::rootjaildetect {
     std::vector<std::string> checkSchemes(const std::vector<std::string>& schemes) override;
 
   public:
-    size_t getMemorySize() override;
+    size_t getExternalMemorySize() noexcept override;
   };
 
 } // namespace margelo::nitro::rootjaildetect

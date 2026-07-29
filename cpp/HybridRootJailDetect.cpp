@@ -75,7 +75,7 @@ namespace margelo::nitro::rootjaildetect {
     return _watchdog;
   }
 
-  size_t HybridRootJailDetect::getMemorySize() {
+  size_t HybridRootJailDetect::getExternalMemorySize() noexcept {
     return sizeof(*this);
   }
 

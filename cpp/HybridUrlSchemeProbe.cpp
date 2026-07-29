@@ -15,7 +15,7 @@ namespace margelo::nitro::rootjaildetect {
     return {};
   }
 
-  size_t HybridUrlSchemeProbe::getMemorySize() {
+  size_t HybridUrlSchemeProbe::getExternalMemorySize() noexcept {
     return sizeof(*this);
   }
 

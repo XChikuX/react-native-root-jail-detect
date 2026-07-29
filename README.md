@@ -19,7 +19,20 @@ npm install @psync/anti-jailbreak react-native-nitro-modules
 bun add @psync/anti-jailbreak react-native-nitro-modules
 ```
 
-*(Requires React Native 0.83+ New Architecture and `react-native-nitro-modules` >= 0.35.0)*
+*(Requires React Native 0.83+ New Architecture and `react-native-nitro-modules` `~0.35.1` — see the compatibility matrix below)*
+
+### Compatibility
+
+`@psync/anti-jailbreak` is built on `react-native-nitro-modules` HybridObjects implemented in shared C++. The C++ must override NitroModules `HybridObject` virtuals with exact signatures, so compatibility is pinned to the NitroModules C++ ABI.
+
+| `react-native-nitro-modules` | Status | Notes |
+| --- | --- | --- |
+| `< 0.35.1` | ❌ Not supported | `HybridObject` virtuals differ; outside the `~0.35.1` peer range. |
+| `0.35.x` (`~0.35.1`) | ✅ Supported (current) | Current peerDependency range. `HybridObject::getExternalMemorySize()` is the override target; do **not** use the legacy `getMemorySize()` name. |
+| `0.36.x` | ✅ Supported | Same `HybridObject::getExternalMemorySize()` API; verified against `0.36.1`. No code changes required. |
+| `0.37.x` and above | ⚠️ Unverified | Not yet validated. Re-run `bun run specs` and a clean native build (iOS pod build + Android Gradle `clean`) before adopting, since NitroModules may rename or remove `HybridObject` virtuals again. |
+
+> **Why this matters:** NitroModules once exposed `HybridObject::getMemorySize()` and later renamed it to `getExternalMemorySize()`. Because iOS consumes NitroModules as a **source-built** CocoaPod (live headers) while Android consumes it via a **prefab/prebuilt** header snapshot, an API rename can fail the iOS build while a cached Android build still passes. Whenever you bump NitroModules, clear both caches and rebuild natively.
 
 ### iOS & Expo
 
@@ -207,6 +220,20 @@ For bare React Native, declare the schemes in `ios/<App>/Info.plist`:
 ```
 
 Undeclared schemes safely return `NO` and never produce a false positive.
+
+For Expo, the config plugin's own `urlSchemes` prop (separate from `configure()`) merges schemes into `Info.plist` during prebuild and enforces the 50-entry cap:
+
+```json
+{
+  "expo": {
+    "plugins": [
+      ["@psync/anti-jailbreak", { "urlSchemes": ["cydia", "sileo"] }]
+    ]
+  }
+}
+```
+
+Pass `urlSchemes: []` to skip adding any schemes, or omit the prop to use the defaults. The plugin never requests `QUERY_ALL_PACKAGES` and only adds narrowly scoped `<queries>` entries for known root-manager apps on Android.
 
 ### Background watchdog
 

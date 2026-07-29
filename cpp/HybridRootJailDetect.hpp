@@ -38,7 +38,7 @@ namespace margelo::nitro::rootjaildetect {
 
   public:
     // HybridObject
-    size_t getMemorySize() override;
+    size_t getExternalMemorySize() noexcept override;
 
   private:
     std::shared_ptr<RootJailDetectConfiguration> _configuration;

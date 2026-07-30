@@ -15,9 +15,17 @@ Pod::Spec.new do |s|
 
   # Shared C++ implementations include conservative iOS sandbox, dyld, and
   # debugger probes alongside the Android detection core.
+  #
+  # `cpp/cpp-adapter.cpp` is the Android-only `JNI_OnLoad` entry point (it
+  # pulls in `<jni.h>`/`<fbjni/fbjni.h>`, which don't exist on iOS). iOS
+  # registration is handled by the Nitrogen-generated `RootJailDetectAutolinking.mm`,
+  # so exclude it from the iOS build.
   s.source_files = [
     "ios/**/*.{h,m,mm,swift}",
     "cpp/**/*.{hpp,cpp}",
+  ]
+  s.exclude_files = [
+    "cpp/cpp-adapter.cpp",
   ]
 
   # Pull in Nitrogen-generated specs, bridges, C++20 / Swift-C++ interop config,

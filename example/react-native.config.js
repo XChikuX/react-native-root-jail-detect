@@ -14,7 +14,15 @@ module.exports = {
         // Codegen script incorrectly fails without this
         // So we explicitly specify the platforms with empty object
         ios: {},
-        android: {},
+        android: {
+          sourceDir: path.join(__dirname, '..', 'android'),
+          cmakeListsPath: path.join(
+            __dirname,
+            '..',
+            'android',
+            'CMakeLists.txt'
+          ),
+        },
       },
     },
   },

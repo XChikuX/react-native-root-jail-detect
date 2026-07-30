@@ -8,13 +8,13 @@ import {
   Alert,
   ActivityIndicator,
   TouchableOpacity,
+  SafeAreaView,
 } from 'react-native';
 import {
   checkDetailed,
   getDetectionReasons,
   type CompromiseAssessment,
 } from '@psync/anti-jailbreak';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 function App() {
   const [loading, setLoading] = useState(true);

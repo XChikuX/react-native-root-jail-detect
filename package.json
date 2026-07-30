@@ -52,6 +52,7 @@
       "source": "./src/index.tsx",
       "types": "./lib/typescript/src/index.d.ts"
     },
+    "./app.plugin.js": "./app.plugin.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -176,7 +177,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/psync/anti-jailbreak.git"
+    "url": "git+https://github.com/XChikuX/react-native-root-jail-detect.git"
   },
   "scripts": {
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",

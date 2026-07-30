@@ -40,6 +40,16 @@ target_include_directories(
   ../cpp
 )
 
+# The Android NDK injects `-DANDROID` on the compiler command line, which
+# collides with the `ANDROID` enumerator in the Nitrogen-generated
+# `Platform.hpp` enum (`Platform::ANDROID` -> `Platform::1`). Force-include a
+# header that `#undef`s it before any source is compiled. Platform detection
+# here uses `__ANDROID__` (with underscores), never the bare `ANDROID` macro,
+# so undefining it is safe.
+target_compile_options(RootJailDetect PRIVATE
+  -include ${CMAKE_SOURCE_DIR}/undef-platform-macros.h
+)
+
 # Pull in generated spec sources, include paths, folly flags, and the
 # NitroModules + React Native prefab dependencies.
 include(${CMAKE_SOURCE_DIR}/../nitrogen/generated/android/RootJailDetect+autolinking.cmake)

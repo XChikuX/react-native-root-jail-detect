@@ -279,6 +279,106 @@ bun run clean
 
 Do not run Metro or other persistent/watch commands as unattended validation; they do not terminate on their own.
 
+## Native build commands (validated on macOS / Xcode 26.5)
+
+The commands below are the **exact ones that produced working builds** on this machine. They are deliberately not wrapped in `turbo` because turbo sanitizes the task environment and drops the env vars the SDKs need (see gotchas). Run from the repository root unless noted.
+
+### Environment variables
+
+The library publishes no env contract of its own, but the toolchains do. Set these per shell session (do not put them in `~/.zshrc` — they point at machine-specific paths):
+
+```sh
+# macOS / Xcode
+export DEVELOPER_DIR="/Volumes/Xcode/Applications/Xcode.app/Contents/Developer"
+# `xcode-select` on this machine points at CommandLineTools, which cannot build
+# RN/CocoaPods. DEVELOPER_DIR overrides it for the current process only.
+
+# Android / JDK / SDK
+export ANDROID_HOME="/Volumes/Xcode/Android/sdk"
+export ANDROID_SDK_ROOT="/Volumes/Xcode/Android/sdk"
+export JAVA_HOME="/usr/local/Cellar/openjdk@21/21.0.10/libexec/openjdk.jdk/Contents/Home"
+# Only JDK 21 is installed. The library targets JDK 17 bytecode
+# (`sourceCompatibility`/`targetCompatibility` VERSION_17) so the JDK 21
+# runtime is fine. `example/android/gradle.properties` pins the toolchain to
+# this JDK and disables auto-download.
+```
+
+### JavaScript / TypeScript / Nitro
+
+```sh
+# Install dependencies (workspace is Bun-managed; do not use npm)
+bun install --frozen-lockfile
+
+# Validate (always run before native builds; cheap and fast)
+bun run typecheck
+bun run lint
+bun run test --maxWorkers=2
+bun run build
+
+# Regenerate Nitrogen bindings after any .nitro.ts change
+# `nitrogen` is NOT in node_modules/.bin; bun run specs resolves it via Bun
+# workspace. If it ever errors with "command not found", run it directly:
+#   npx nitrogen@0.36.1
+bun run specs
+```
+
+### iOS build (xcodebuild)
+
+```sh
+cd example/ios
+
+# 1. Install Pods. Must come first — RN's codegen produces Pods/ inputs.
+#    If pod install errors with "No podspec found for ReactAppDependencyProvider
+#    in build/generated/ios/...", delete Pods/ + Podfile.lock and retry; that is
+#    a stale-codegen state, not a real failure.
+pod install
+
+# 2. Build the Debug app for an iOS simulator.
+xcodebuild \
+  -workspace RootJailDetectExample.xcworkspace \
+  -scheme RootJailDetectExample \
+  -configuration Debug \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -derivedDataPath build \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+```
+
+Expected: `** BUILD SUCCEEDED **`. This was the command that produced the working build after fixing TRIAGE Issues 1–5.
+
+### Android build (Gradle + CMake + NDK)
+
+```sh
+cd example/android
+
+# Build a single ABI to keep the first compile under ~10 minutes. Use all
+# architectures only when validating a release.
+./gradlew app:bundleDebug \
+  --no-daemon \
+  --console=plain \
+  -PreactNativeArchitectures=arm64-v8a
+```
+
+Expected: `BUILD SUCCESSFUL`. The CMake/NDK pass of `:psync_anti-jailbreak` compiles `cpp/**` (10 sources: HybridRootJailDetect, HybridSecurityWatchdog, HybridUrlSchemeProbe, DeviceRiskAssessment, SignalCatalog, ProcParsers, AndroidProbes, AndroidChecks, IOSChecks, TcpProbe) plus the generated autolinking glue, then links into the example APK.
+
+### Why these are not the `bun run turbo` versions
+
+`turbo run build:ios` / `turbo run build:android` are listed as the CI-equivalent invocations above and remain authoritative for CI. On a workstation they are unreliable because:
+
+- `turbo` strips `DEVELOPER_DIR` from the task environment (not listed in `turbo.json` `build:ios.env`), so CocoaPods loses Xcode and fails.
+- `turbo` does not always forward the custom `JAVA_HOME` to nested gradlew invocations on this toolchain mix.
+
+Use the direct invocations above for local validation. The CI workflows in `.github/workflows/ci.yml` use the turbo versions inside a clean GitHub Actions runner where the toolchains are already on PATH.
+
+### Gotchas (machine-specific)
+
+- **iOS — `nitrogen` CLI is not installed.** `bun run specs` resolves it from the workspace; if it errors with "command not found", run `npx nitrogen@0.36.1` instead. The committed `nitrogen/generated/` was produced by nitrogen `0.36.1`.
+- **iOS — stale `Pods/`.** A failed prebuild leaves behind `Pods/` with `ReactAppDependencyProvider` from an older RN codegen run. Delete `example/ios/Pods` + `example/ios/Podfile.lock` and re-run `pod install` before retrying.
+- **Android — daemon busy-spin on this Gradle/AGP pair.** Gradle 9.0.0 + AGP 8.12.0 (from `@react-native/gradle-plugin`) has been observed to spin a daemon JVM on `:app:mergeDebugShaders` with no child processes. The native library still compiles cleanly. If you hit it, kill the daemon (`jps` then `kill <pid>`), and retry with `--info` to localize; if it reproduces, downgrade Gradle wrapper to `8.x` known to match AGP 8.12.
+- **Android — JDK detection.** Without the toolchain overrides in `example/android/gradle.properties`, Gradle attempts foojay auto-provisioning, which fails on this host kernel string. Do not delete those lines.
+- **Do not run two `./gradlew` invocations concurrently** — they fight over `~/.gradle/daemon/9.0.0/registry.bin.lock`.
+
 ## Validation matrix
 
 Use the smallest relevant checks first, then broaden based on what changed.

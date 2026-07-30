@@ -78,7 +78,7 @@ android/generated
 
 # React Native Nitro Modules
 # nitrogen/generated/ is committed so consumers can build the native
-# library without running codegen themselves (see nitro.json + PLAN.md).
+# library without running codegen themselves (see nitro.json).
 nitrogen/*
 !nitrogen/generated/
 !nitrogen/generated/**

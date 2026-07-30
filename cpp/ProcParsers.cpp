@@ -256,7 +256,7 @@ namespace margelo::nitro::rootjaildetect {
     // devices. It is retained as a low-weight fallback for environments where the
     // init namespace happens to be visible (emulators, some debug builds), but the
     // real overlay detection work is shifting to structured self-namespace path
-    // diffs and `statx(STATX_ATTR_MOUNT_ROOT)` in later hardening (PLAN.md gap #10).
+    // diffs and `statx(STATX_ATTR_MOUNT_ROOT)` in later hardening (see the Roadmap in README.md).
     for (const PatternEntry& entry : K_MOUNT_PATTERNS) {
       if (containsCI(selfMountinfoContent, entry.token) &&
           !containsCI(initMountinfoContent, entry.token)) {

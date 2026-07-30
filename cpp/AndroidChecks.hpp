@@ -1,7 +1,7 @@
 ///
 /// AndroidChecks.hpp
 ///
-/// Orchestrates the Android scored baseline (PLAN.md Phase 1): reads the
+/// Orchestrates the Android scored baseline: reads the
 /// relevant `/proc` and `/sys` files, runs the pure parsers, probes
 /// root-manager paths and system properties, and folds everything into a
 /// deduplicated list of `DetectionSignal`s plus the informational debugger flag.

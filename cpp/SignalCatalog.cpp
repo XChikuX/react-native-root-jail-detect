@@ -37,7 +37,7 @@ namespace margelo::nitro::rootjaildetect {
   std::optional<SignalSpec> lookupSignal(std::string_view id) noexcept {
     // The catalog is small and stable; a flat lookup is clearer than a map and
     // avoids a static-initialization-order dependency. Add new signals here and
-    // keep the weights aligned with the risk table in `PLAN.md`.
+    // keep the weights aligned with the Signal Catalog in `README.md`.
     if (id == SignalId::ANDROID_MOUNT_MAGISK) return makeSpec(SignalId::ANDROID_MOUNT_MAGISK, Severity::HIGH, SignalCategory::MOUNT, 35.0, 0.85);
     if (id == SignalId::ANDROID_MAPS_ZYGISK) return makeSpec(SignalId::ANDROID_MAPS_ZYGISK, Severity::HIGH, SignalCategory::INJECTION, 30.0, 0.85);
     if (id == SignalId::ANDROID_MAPS_LSPOSED) return makeSpec(SignalId::ANDROID_MAPS_LSPOSED, Severity::HIGH, SignalCategory::HOOK, 30.0, 0.85);
@@ -67,7 +67,7 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_DEBUGGER_TRACERPID) return makeSpec(SignalId::ANDROID_DEBUGGER_TRACERPID, Severity::LOW, SignalCategory::DEBUGGER, 0.0, 0.90);
     if (id == SignalId::IOS_DYLD_HOOK) return makeSpec(SignalId::IOS_DYLD_HOOK, Severity::HIGH, SignalCategory::HOOK, 30.0, 0.80);
     if (id == SignalId::IOS_JAILBREAK_ARTIFACT) return makeSpec(SignalId::IOS_JAILBREAK_ARTIFACT, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.60);
-    // Medium weight until validated on physical rootless devices; see `PLAN.md` gap #1.
+    // Medium weight until validated on physical rootless devices; see the Threat Model in `README.md`.
     if (id == SignalId::IOS_JAILBREAK_ROOTLESS) return makeSpec(SignalId::IOS_JAILBREAK_ROOTLESS, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.55);
     if (id == SignalId::IOS_JAILBREAK_DOPAMINE) return makeSpec(SignalId::IOS_JAILBREAK_DOPAMINE, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.55);
     if (id == SignalId::IOS_JAILBREAK_PALERA1N) return makeSpec(SignalId::IOS_JAILBREAK_PALERA1N, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.55);

@@ -5,7 +5,7 @@
 /// `CompromiseAssessment`. Kept header-only and side-effect-free so it is
 /// trivially unit-testable with fixture signals.
 ///
-/// Rules (see `PLAN.md` -> Risk model):
+/// Rules (see the Signal Catalog in `README.md`):
 ///   - Each signal id is counted at most once (equivalent evidence is not
 ///     double-counted). When the same id fires multiple times, the first
 ///     occurrence wins and later ones are dropped.

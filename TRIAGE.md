@@ -1,10 +1,11 @@
-# Triage — iOS Build Failures (`@psync/anti-jailbreak`)
+# Triage — Native Build Failures (`@psync/anti-jailbreak`)
 
-Status of the recurring iOS (fastlane) build failures encountered while shipping
-the `UrlSchemeProbe` Swift HybridObject. This document captures what failed,
-what is fixed, what is blocked, and the recommended paths forward.
+Status of native (fastlane/Gradle/Xcode) build failures encountered while
+shipping the `UrlSchemeProbe` Swift HybridObject and the surrounding
+C++/Swift/Kotlin glue. Most are fixed and shipped; one Android issue remains
+open.
 
-Last updated: 2026-07-30
+Last updated: 2026-07-30 (validated on macOS / Xcode 26.5)
 
 ---
 
@@ -12,215 +13,107 @@ Last updated: 2026-07-30
 
 | # | Error | Status | Fix |
 |---|-------|--------|-----|
-| 1 | `only virtual member functions can be marked 'override'` (C++, `getMemorySize`) | ✅ Fixed | Renamed to `getExternalMemorySize` with `noexcept` |
-| 2 | `overriding declaration requires an 'override' keyword` (Swift, `init()`) | ✅ Fixed | `public init()` → `public override init()` |
-| 3 | `value of type '...std__vector_std__string_' has no member 'map'` (Swift, generated `_cxx.swift`) | ⛔ Blocked | See options below |
+| 1 | C++ `only virtual member functions can be marked 'override'` (`getMemorySize`) | ✅ Fixed | Renamed to `getExternalMemorySize() noexcept override` in all three HybridObjects |
+| 2 | Swift `overriding declaration requires an 'override' keyword` (`init()`) | ✅ Fixed | `public init()` → `public override init()` in `ios/HybridUrlSchemeProbe.swift` |
+| 3 | Swift `std__vector_std__string_ has no member 'map'` (generated `_cxx.swift`) | ✅ Fixed | Refactored spec to `canOpenUrl(scheme: string): boolean` — eliminated the `string[]` at the Swift↔C++ boundary |
+| 4 | C++ `use of undeclared identifier 'SOCK_CLOEXEC'` (`TcpProbe.cpp`) | ✅ Fixed | `#define SOCK_CLOEXEC 0` fallback (iOS SDK lacks the Linux-only flag) |
+| 5 | `HybridRootJailDetect is not default-constructible` / `abstract class` | ✅ Fixed | Added the missing `assessRisk()` override (it is a pure virtual on the generated base) |
+| 6 | Android `./gradlew app:bundleDebug` hangs at `:app:mergeDebugShaders` | ⛔ **Blocked** | Gradle 9.0.0 + AGP 8.12.0 daemon busy-spin — see below |
 
 ---
 
-## Issue 1 — C++ `getMemorySize` override (FIXED)
+## Resolved notes (why Issues 1–5 matter)
+
+These are all fixed in shipped code. They are recorded here so the same classes
+of regression are not reintroduced:
+
+- **Issue 1 — ABI rename.** `HybridObject::getExternalMemorySize()` is the
+  override target; there is **no** `getMemorySize()` on the base. The rename
+  has existed in NitroModules since `0.25.0`. iOS catches this because it
+  consumes NitroModules as a **source-built** CocoaPod (live headers), while a
+  **cached** Android prefab/prebuilt build can mask the same incorrect
+  override. See the compatibility matrix in `README.md`.
+- **Issue 3 — avoid `std::vector` across the Swift↔C++ boundary.** The
+  generated `_cxx.swift` bridge calls `.map()` on a `std::vector<std::string>`,
+  which relies on Swift's C++ interop synthesizing `Sequence` conformance. This
+  is the canonical NitroModules pattern and *should* work under
+  `SWIFT_OBJC_INTEROP_MODE = objcxx`, but it reproducibly failed even on
+  Xcode 26.5. Resolution: `UrlSchemeProbe` now takes a single `scheme: string`
+  and `cpp/IOSChecks.cpp` calls it once per scheme. This is a general lesson —
+  prefer scalar parameters at Swift↔C++ HybridObject boundaries.
+- **Issue 5 — pure-virtual aliases must be overridden.** When a `.nitro.ts`
+  spec declares a method, nitrogen emits it as a pure virtual on the generated
+  C++ base. `assessRisk()` is an alias for `checkDetailed()`, but it still
+  **must** be implemented or the class becomes abstract and fails Nitro's
+  default-constructible autolinking assertion.
+
+---
+
+## Issue 6 — Android Gradle build hangs at `:app:mergeDebugShaders` (OPEN)
 
 **Symptom**
 
-```
-cpp/HybridRootJailDetect.hpp:41:28
-  size_t getMemorySize() override;
-                         ^ only virtual member functions can be marked 'override'
-```
+`./gradlew app:bundleDebug` prints through all `:psync_anti-jailbreak` native
+CMake/NDK tasks (which **succeed**) and then appears to stall on
+`:app:mergeDebugShaders` with no further output.
 
-Same error on `HybridSecurityWatchdog.hpp` and `HybridUrlSchemeProbe.hpp`.
+**Root cause — daemon CPU busy-spin, not slow compilation**
 
-**Root cause**
+`ps` shows the Gradle daemon JVM at **~140% CPU, sustained for 29+ minutes,
+with zero child processes** (no `clang`/`cmake`/`ninja`/`cc1plus`). RSS is only
+~73 MB, so it is not GC/memory thrashing — the JVM is in a busy loop.
+`mergeDebugShaders` is a trivial AGP resource-merge task that should never burn
+a core for minutes. The toolchain is bleeding-edge: **Gradle 9.0.0** +
+**AGP 8.12.0** (`@react-native/gradle-plugin`'s `libs.versions.toml`) +
+**React Native 0.83**. The most likely cause is a Gradle 9 / AGP 8.12
+incompatibility in the resource-merge/configuration pipeline. (`/Volumes/Xcode`
+is also mounted `noowners`, which can interact badly with AGP file ops, but
+that normally errors rather than spins.)
 
-`NitroModules` `HybridObject` base class declares:
+**Important:** the native library itself compiles cleanly on Android, so the
+C++/Kotlin changes from Issues 3–5 are **not** the cause.
 
-```cpp
-virtual inline size_t getExternalMemorySize() noexcept { return 0; }
-```
+**Recommended paths**
 
-There is **no** `getMemorySize()` method on the base. The `override` keyword on
-a non-existent base method is rejected by the compiler.
-
-This rename has existed in NitroModules since at least **0.25.0** on npm
-(verified across 0.25.0, 0.30.0, 0.33.0, 0.34.0, 0.35.x, 0.36.x).
-
-**Fix applied**
-
-Renamed `getMemorySize` → `getExternalMemorySize` (with `noexcept`) in:
-
-- `cpp/HybridRootJailDetect.hpp` + `.cpp`
-- `cpp/HybridSecurityWatchdog.hpp` + `.cpp`
-- `cpp/HybridUrlSchemeProbe.hpp` + `.cpp`
-
-Signature now matches the base exactly: `size_t getExternalMemorySize() noexcept override`.
-
-**Why Android passed but iOS failed**
-
-iOS consumes NitroModules as a source-built CocoaPod with live C++ headers.
-Android consumes a prefab/prebuilt header snapshot via Gradle that can be
-satisfied by a cached earlier build. The same incorrect override can fail iOS
-while a cached Android build appears to pass.
-
----
-
-## Issue 2 — Swift `init()` override (FIXED)
-
-**Symptom**
-
-```
-ios/HybridUrlSchemeProbe.swift:14:10
-  public init() { }
-         ^ overriding declaration requires an 'override' keyword
-```
-
-**Root cause**
-
-The nitrogen-generated base class `HybridUrlSchemeProbeSpec_base`
-(`nitrogen/generated/ios/swift/HybridUrlSchemeProbeSpec.swift:29`) declares a
-designated initializer:
-
-```swift
-open class HybridUrlSchemeProbeSpec_base {
-  public init() { }
-}
-```
-
-`HybridUrlSchemeProbeSpec` is `HybridUrlSchemeProbeSpec_protocol & HybridUrlSchemeProbeSpec_base`,
-so the subclass inherits that `init()`. In Swift, a subclass initializer that
-matches a superclass designated initializer must be marked `override`.
-
-**Fix applied**
-
-`ios/HybridUrlSchemeProbe.swift` line 14:
-
-```swift
-public override init() { }
-```
-
-**Verification**
-
-The generated `HybridObject` Swift protocol requires `memorySize`, `dispose`,
-and `toString` — all three have default implementations via the protocol
-extension, so the implementation class does not need to provide them. The
-`checkSchemes(schemes:)` signature matches the generated protocol exactly.
-Only `HybridUrlSchemeProbe` is Swift-backed; the root and watchdog
-HybridObjects are pure C++ with no Swift files.
-
----
-
-## Issue 3 — Swift `std::vector` `.map()` (BLOCKED)
-
-**Symptom**
-
-```
-node_modules/@psync/anti-jailbreak/nitrogen/generated/ios/swift/HybridUrlSchemeProbeSpec_cxx.swift:130
-  let __result = try self.__implementation.checkSchemes(schemes: schemes.map({ __item in String(__item) }))
-                                                                      ~~~~~~~^ has no member 'map'
-```
-
-**Root cause — environmental, not a code bug**
-
-The generated code IS the canonical NitroModules pattern. The official
-NitroModules test suite
-([`HybridTestObjectSwiftKotlinSpec_cxx.swift`](https://github.com/mrousavy/nitro/blob/main/packages/react-native-nitro-test/nitrogen/generated/ios/swift/HybridTestObjectSwiftKotlinSpec_cxx.swift))
-uses the exact same pattern for `bounceStrings`:
-
-```swift
-public final func bounceStrings(array: bridge.std__vector_std__string_) -> bridge.Result_std__vector_std__string__ {
-  do {
-    let __result = try self.__implementation.bounceStrings(array: array.map({ __item in String(__item) }))
-    ...
-```
-
-The `.map()` call relies on Swift's C++ interop making `std::vector` conform to
-`Sequence`. This normally works when `SWIFT_OBJC_INTEROP_MODE = objcxx` is set —
-and it IS set in both NitroModules' podspec and this library's
-`nitrogen/generated/ios/RootJailDetect+autolinking.rb`.
-
-The fact that it does not work in the consumer's build points to one of:
-
-1. **Consumer's Xcode/Swift version** is older or has a regression in
-   `std::vector` Sequence conformance under C++ interop. Swift's C++ interop
-   matured significantly over Xcode 15 → 16.
-2. **Module visibility issue**, possibly related to the unusual
-   `SWIFT_INSTALL_OBJC_HEADER = NO` setting in the autolinking.rb (added "for
-   Static linkage on Xcode 26.4"). This setting is not present in NitroModules'
-   own podspec.
-3. **NitroModules consumer-version mismatch** — the consumer's
-   `react-native-nitro-modules` is older than the `0.36.1` nitrogen that
-   generated this code.
-
-**Constraint**
-
-The failing line is in **generated code** under `nitrogen/generated/`. Project
-policy (and NitroModules policy) forbids hand-editing generated files. The fix
-must come from the `.nitro.ts` spec or the environment.
-
-**Cannot validate from Windows host** — the C++/Swift core is not
-Windows-compilable. Native validation requires macOS/Linux/WSL with the NDK and
-Xcode toolchains.
-
----
-
-## Recommended paths for Issue 3
-
-### Option A — Fix the environment (preferred if it works)
-
-Confirm the consumer's toolchain matches what generated the code:
-
-1. **Xcode version** — verify the fastlane/CI Xcode is ≥ 16.4 (the minimum
-   NitroModules currently documents). Older Xcode versions have weaker C++
-   interop and may not reliably provide `std::vector` Sequence conformance.
-2. **NitroModules version** — verify the consumer's
-   `react-native-nitro-modules` matches the nitrogen CLI version used to
-   generate this code. The repo currently has a version split (see
-   "Pre-existing version split" below).
-3. **Interop setting** — confirm `SWIFT_OBJC_INTEROP_MODE = objcxx` is applied
-   to the consumer's pod target for `@psync/anti-jailbreak` (it is set in the
-   shipped `RootJailDetect+autolinking.rb`, but it should be verified in the
-   consumer's build settings).
-
-If the environment is the sole cause, **no code change is needed** — the
-generated code is correct.
-
-### Option B — Refactor to `canOpenUrl(scheme: string): boolean` (robust)
-
-Eliminate the `string[]` parameter from the Swift↔C++ boundary entirely.
-`UIApplication.canOpenURL` takes a single URL anyway, so this is also
-semantically cleaner.
-
-This is a safe change because `UrlSchemeProbe` is an **internal** HybridObject
-— it is not exported from `src/`, not referenced by any JS-facing API, and is
-only consumed by `cpp/IOSChecks.cpp`. Confirmed via grep.
-
-**Required changes:**
-
-1. `src/specs/UrlSchemeProbe.nitro.ts` — change method:
-   ```ts
-   canOpenUrl(scheme: string): boolean
+1. **Localize the spin** — kill the stuck daemon and retry with `--info`:
+   ```sh
+   JAVA_HOME=... ANDROID_HOME=... ./gradlew app:bundleDebug \
+     --no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a --info
    ```
-2. `ios/HybridUrlSchemeProbe.swift` — implement `canOpenUrl(scheme: String) throws -> Bool`
-   returning `app.canOpenURL(URL(string: "\(scheme)://")!)`.
-3. `cpp/HybridUrlSchemeProbe.hpp` + `.cpp` — change the override to
-   `bool canOpenUrl(const std::string& scheme) override` (no-op stub returning
-   `false`).
-4. `cpp/IOSChecks.cpp` — replace the single `probe->checkSchemes(urlSchemes)`
-   call with a loop that filters `urlSchemes` by `probe->canOpenUrl(scheme)`.
-5. `bun run specs` — regenerate.
-6. Run JS-side validation (`typecheck`, `lint`, `test`, `build`).
+2. **Pin a known-stable toolchain** — if it reproduces, downgrade the Gradle
+   wrapper to a `8.x` that RN 0.83 + AGP 8.12 are known to work with, or pin
+   AGP to a version matched to Gradle 8.x.
+3. Do not run two `./gradlew` invocations concurrently — they fight over
+   `~/.gradle/daemon/9.0.0/registry.bin.lock`.
 
-This sidesteps the entire class of Swift/C++ std-container interop issues and
-removes the build's dependency on a specific Xcode feature working reliably.
+---
 
-**Tradeoff:** requires a regeneration + C++ change. Native build validation on
-macOS is still required.
+## Operational notes (macOS validation)
+
+- **Xcode location** — Xcode.app is at `/Volumes/Xcode/Applications/Xcode.app`
+  (Xcode 26.5). `/Volumes/Xcode/Xcode/` is only a `DerivedData` scratch dir.
+- **`DEVELOPER_DIR` vs turbo** — Xcode is not the active `xcode-select` target
+  (Command Line Tools is). `export DEVELOPER_DIR=...` overrides it without
+  sudo, **but `turbo` sanitizes the environment** and does not pass
+  `DEVELOPER_DIR` through (`turbo.json` `build:ios.env` does not list it). So
+  `bun run turbo run build:ios` loses it and CocoaPods fails to find Xcode.
+  Workaround: run the example build directly (`bun run example build:ios`), or
+  add `DEVELOPER_DIR` to `turbo.json` `globalPassThroughEnv`.
+- **`nitrogen` CLI is not in `node_modules/.bin`** — use
+  `npx nitrogen@0.36.1` to regenerate (matches the version that produced the
+  committed generated code). The bare `"specs": "nitrogen"` script fails until
+  nitrogen is added as a devDependency; `bun run specs` resolves it from the
+  workspace.
+- **ReactAppDependencyProvider podspec** — if `pod install` errors with
+  `No podspec found for ReactAppDependencyProvider in build/generated/ios/...`,
+  delete `example/ios/Pods` + `example/ios/Podfile.lock` and re-run
+  `pod install`; it is a stale-codegen-artifact state, not a real failure.
 
 ---
 
 ## Pre-existing version split (background risk)
 
-The repo currently exercises three different NitroModules ABIs across its
-workspaces:
+The repo exercises three different NitroModules versions across its workspaces:
 
 | Location | `react-native-nitro-modules` |
 |----------|------------------------------|
@@ -228,15 +121,12 @@ workspaces:
 | root `bun.lock` | `0.36.1` |
 | `example/` `bun.lock` | `0.35.10` |
 
-The generated `nitrogen/generated/` was produced by nitrogen `0.36.1`.
-
-Consumers of the published package will bring their own NitroModules version.
-If it diverges from what generated the committed code, build mismatches
-(like Issue 3) become more likely.
-
-**Recommended follow-up:** decide whether the example should match the
-library's NitroModules, and whether the peer range should formally widen
-(e.g. `~0.35.1 || ~0.36.0`) when 0.36 is adopted.
+The committed `nitrogen/generated/` was produced by nitrogen `0.36.1`. The
+mismatch was confirmed but did **not** cause Issue 3 (it reproduces regardless
+of the installed NitroModules version). Consumers bring their own version; if
+it diverges, build mismatches become more likely. Recommended follow-up (separate
+task): decide whether the example should match the library, and whether the peer
+range should formally widen (e.g. `~0.35.1 || ~0.36.0`) when 0.36 is adopted.
 
 ---
 
@@ -248,25 +138,22 @@ library's NitroModules, and whether the peer range should formally widen
 | `bun run lint` | ✅ Pass |
 | `bun run test --maxWorkers=2` | ✅ Pass (22/22) |
 | `bun run build` | ✅ Pass |
-| `bun run turbo run build:ios` | ⛔ Not run (Windows host) |
-| `bun run turbo run build:android` | ⛔ Not run (Windows host) |
+| iOS `xcodebuild` (iPhone 17 sim, Debug, Xcode 26.5) | ✅ **BUILD SUCCEEDED** |
+| Android `./gradlew app:bundleDebug` (arm64-v8a) | ⛔ Hangs at `:app:mergeDebugShaders` (Issue 6) |
 
-Native iOS/Android builds are not compilable on this Windows host per
-`CLAUDE.md`. Native validation requires macOS/Linux/WSL.
+iOS was validated with `xcodebuild` directly rather than
+`bun run turbo run build:ios`, because turbo strips `DEVELOPER_DIR` from the
+task environment (see Operational notes). The native `:psync_anti-jailbreak`
+Android module compiles cleanly; only the downstream app AGP task hangs.
 
 ---
 
 ## Next actions
 
-1. **Decide on Issue 3 path** — Option A (verify/fix environment) or Option B
-   (refactor spec to `canOpenUrl`). If proceeding with Option B, the changes
-   are mechanical and listed above.
-2. **Run native builds on macOS** to confirm whichever fix lands:
-   ```sh
-   bun install --frozen-lockfile
-   bun run typecheck && bun run lint && bun run test --maxWorkers=2 && bun run build
-   bun run turbo run build:ios --cache-dir=.turbo/ios
-   bun run turbo run build:android --cache-dir=.turbo/android
-   ```
-3. **Reconcile the version split** (optional, separate task).
-4. **Commit and release** only when the user explicitly requests it.
+1. **Resolve Issue 6** — retry with `--info` to localize the spin, and if it
+   reproduces pin the Gradle/AGP pair to a known-stable combination.
+2. **Reconcile the version split** — align example + peer NitroModules;
+   optionally add `nitrogen` as a pinned devDependency (separate task).
+3. Optionally add `DEVELOPER_DIR` to `turbo.json` `globalPassThroughEnv` so
+   `bun run turbo run build:ios` works without bypassing turbo.
+4. Commit and release only when explicitly requested.

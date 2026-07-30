@@ -9,7 +9,7 @@
 /// weight or severity of an existing id is allowed (it is a tuning change), but
 /// repurposing an id is a breaking change that requires a version bump.
 ///
-/// Weights mirror the risk table in `PLAN.md` and are intentionally conservative
+/// Weights mirror the Signal Catalog in `README.md` and are intentionally conservative
 /// to keep false-positive risk low on stock/custom-ROM devices. See the security
 /// implementation guidelines in `CLAUDE.md` before adding a new signal.
 ///

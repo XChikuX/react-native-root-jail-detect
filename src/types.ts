@@ -5,7 +5,7 @@
 // sync. This file re-exports them so callers can import from a single path
 // and so older import sites that targeted `src/types.ts` keep resolving.
 //
-// See PLAN.md for the full API contract and error semantics.
+// See README.md for the full API contract and error semantics.
 
 export type {
   CompromiseAssessment,

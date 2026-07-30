@@ -14,30 +14,30 @@ add_library(
   # Shared, hand-written C++ HybridObject implementations. The generated
   # spec glue and OnLoad registration are pulled in by the autolinking
   # cmake file included below.
-  ../../cpp/HybridRootJailDetect.cpp
-  ../../cpp/HybridSecurityWatchdog.cpp
-  ../../cpp/DeviceRiskAssessment.cpp
+  ../cpp/HybridRootJailDetect.cpp
+  ../cpp/HybridSecurityWatchdog.cpp
+  ../cpp/DeviceRiskAssessment.cpp
   # PR 2: Android scored baseline helpers. Pure parsers live in
   # ProcParsers.cpp / Scoring.hpp; platform-specific probes (filesystem and
   # __system_property_get) live in AndroidProbes.cpp and are compiled under
   # #if defined(__ANDROID__) so the same files are safe to include in a
   # host-side unit-test build later.
-  ../../cpp/SignalCatalog.cpp
-  ../../cpp/ProcParsers.cpp
-  ../../cpp/AndroidProbes.cpp
-  ../../cpp/AndroidChecks.cpp
-  ../../cpp/IOSChecks.cpp
-  ../../cpp/TcpProbe.cpp
-  ../../cpp/HybridUrlSchemeProbe.cpp
+  ../cpp/SignalCatalog.cpp
+  ../cpp/ProcParsers.cpp
+  ../cpp/AndroidProbes.cpp
+  ../cpp/AndroidChecks.cpp
+  ../cpp/IOSChecks.cpp
+  ../cpp/TcpProbe.cpp
+  ../cpp/HybridUrlSchemeProbe.cpp
   # JNI_OnLoad entry point for Nitro Modules autolinking
-  ../../cpp/cpp-adapter.cpp
+  ../cpp/cpp-adapter.cpp
 )
 
 # Hand-written implementations live in cpp/ at the package root.
 target_include_directories(
   RootJailDetect
   PRIVATE
-  ../../cpp
+  ../cpp
 )
 
 # Pull in generated spec sources, include paths, folly flags, and the

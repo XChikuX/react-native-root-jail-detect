@@ -300,7 +300,6 @@ namespace margelo::nitro::rootjaildetect {
 #endif
 #else
     (void) includeEvidence;
-    (void) deadline;
 #endif
     return result;
   }

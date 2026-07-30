@@ -36,6 +36,14 @@ apply plugin: "com.facebook.react"
 // (adds `nitrogen/generated/android/kotlin` to the main source set).
 apply from: "../nitrogen/generated/android/RootJailDetect+autolinking.gradle"
 
+// Resolve the list of ABIs to build from the consuming app's
+// `reactNativeArchitectures` Gradle property (set in gradle.properties),
+// falling back to the full set React Native ships.
+def reactNativeArchitectures() {
+  def value = project.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
 android {
   namespace "com.rootjaildetect"
 
@@ -44,10 +52,40 @@ android {
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
     targetSdkVersion getExtOrDefault("targetSdkVersion")
+
+    externalNativeBuild {
+      cmake {
+        cppFlags "-frtti -fexceptions -Wall -fstack-protector-all"
+        arguments "-DANDROID_STL=c++_shared", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+        abiFilters (*reactNativeArchitectures())
+      }
+    }
   }
 
   buildFeatures {
     buildConfig true
+    prefab true
+  }
+
+  packagingOptions {
+    excludes = [
+      "META-INF",
+      "META-INF/**",
+      "**/libc++_shared.so",
+      "**/libfbjni.so",
+      "**/libjsi.so",
+      "**/libfolly_json.so",
+      "**/libfolly_runtime.so",
+      "**/libglog.so",
+      "**/libhermes.so",
+      "**/libhermes-executor-debug.so",
+      "**/libhermes_executor.so",
+      "**/libreactnative.so",
+      "**/libreactnativejni.so",
+      "**/libturbomodulejsijni.so",
+      "**/libreact_nativemodule_core.so",
+      "**/libjscexecutor.so"
+    ]
   }
 
   buildTypes {
@@ -79,4 +117,5 @@ android {
 
 dependencies {
   implementation "com.facebook.react:react-android"
+  implementation project(":react-native-nitro-modules")
 }

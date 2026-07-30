@@ -18,7 +18,7 @@ Preserve compatibility across the TypeScript specs, JavaScript wrappers, shared 
 Use the versions and package manager committed to the repository:
 
 - Node.js: `v22.20.0` from `.nvmrc`
-- Bun: `1.x` from `packageManager`
+- Bun: `1.3.10+` from `packageManager`
 - React Native: `0.83.10` (New Architecture only)
 - React: `19.2.7`
 - TypeScript: `7.0.x` strict mode (TypeScript 7+ removed `noImplicitUseStrict` / `noStrictGenericChecks`; do not reintroduce them)

@@ -28,6 +28,10 @@
 #include <unistd.h>
 #endif
 
+#if !defined(SOCK_CLOEXEC)
+#define SOCK_CLOEXEC 0
+#endif
+
 namespace margelo::nitro::rootjaildetect {
 
   namespace {

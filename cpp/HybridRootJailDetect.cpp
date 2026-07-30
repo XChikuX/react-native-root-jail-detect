@@ -65,6 +65,10 @@ namespace margelo::nitro::rootjaildetect {
     });
   }
 
+  std::shared_ptr<Promise<CompromiseAssessment>> HybridRootJailDetect::assessRisk() {
+    return checkDetailed();
+  }
+
   std::shared_ptr<HybridSecurityWatchdogSpec> HybridRootJailDetect::getWatchdog() {
     // `getWatchdog()` is a synchronous JS entry point, so serialize only the
     // one-time handle creation; the watchdog itself owns its lifecycle lock.

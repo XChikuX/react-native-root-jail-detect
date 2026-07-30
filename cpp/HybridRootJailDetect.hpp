@@ -34,6 +34,7 @@ namespace margelo::nitro::rootjaildetect {
   public:
     void configure(const RootJailDetectOptions& options) override;
     std::shared_ptr<Promise<CompromiseAssessment>> checkDetailed() override;
+    std::shared_ptr<Promise<CompromiseAssessment>> assessRisk() override;
     std::shared_ptr<HybridSecurityWatchdogSpec> getWatchdog() override;
 
   public:

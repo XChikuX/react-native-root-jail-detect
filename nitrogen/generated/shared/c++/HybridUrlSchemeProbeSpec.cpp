@@ -14,7 +14,7 @@ namespace margelo::nitro::rootjaildetect {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
-      prototype.registerHybridMethod("checkSchemes", &HybridUrlSchemeProbeSpec::checkSchemes);
+      prototype.registerHybridMethod("canOpenUrl", &HybridUrlSchemeProbeSpec::canOpenUrl);
     });
   }
 

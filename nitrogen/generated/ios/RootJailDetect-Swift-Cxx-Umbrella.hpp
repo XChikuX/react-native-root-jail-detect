@@ -17,7 +17,6 @@ namespace margelo::nitro::rootjaildetect { class HybridUrlSchemeProbeSpec; }
 #include <exception>
 #include <memory>
 #include <string>
-#include <vector>
 
 // C++ helpers for Swift
 #include "RootJailDetect-Swift-Cxx-Bridge.hpp"

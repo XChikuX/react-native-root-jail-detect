@@ -13,38 +13,28 @@ public final class HybridUrlSchemeProbe: HybridUrlSchemeProbeSpec {
 
   public override init() { }
 
-  public func checkSchemes(schemes: [String]) throws -> [String] {
-    var responding: [String] = []
-
+  public func canOpenUrl(scheme: String) throws -> Bool {
     guard Thread.isMainThread else {
+      var result = false
       DispatchQueue.main.sync {
-        responding = self.checkSchemesOnMainThread(schemes)
+        result = self.canOpenUrlOnMainThread(scheme)
       }
-      return responding
+      return result
     }
-
-    return checkSchemesOnMainThread(schemes)
+    return canOpenUrlOnMainThread(scheme)
   }
 
-  private func checkSchemesOnMainThread(_ schemes: [String]) -> [String] {
+  private func canOpenUrlOnMainThread(_ scheme: String) -> Bool {
     guard let app = UIApplication.value(forKeyPath: #keyPath(UIApplication.shared)) as? UIApplication else {
-      return []
+      return false
     }
-
-    var result: [String] = []
-    for scheme in schemes {
-      guard isValidScheme(scheme) else { continue }
-      let urlString = "\(scheme)://"
-      guard let url = URL(string: urlString) else { continue }
-      if app.canOpenURL(url) {
-        result.append(scheme)
-      }
-    }
-    return result
+    guard isValidScheme(scheme) else { return false }
+    let urlString = "\(scheme)://"
+    guard let url = URL(string: urlString) else { return false }
+    return app.canOpenURL(url)
   }
 
   private func isValidScheme(_ scheme: String) -> Bool {
-    // Reject empty schemes or anything that looks like a full URL/has whitespace.
     if scheme.isEmpty { return false }
     let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+-"))
     return scheme.unicodeScalars.allSatisfy { allowed.contains($0) }

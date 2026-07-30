@@ -20,8 +20,6 @@ namespace RootJailDetect { class HybridUrlSchemeProbeSpec_cxx; }
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <memory>
-#include <string>
-#include <vector>
 
 /**
  * Contains specialized versions of C++ templated types so they can be accessed from Swift,
@@ -29,17 +27,6 @@ namespace RootJailDetect { class HybridUrlSchemeProbeSpec_cxx; }
  */
 namespace margelo::nitro::rootjaildetect::bridge::swift {
 
-  // pragma MARK: std::vector<std::string>
-  /**
-   * Specialized version of `std::vector<std::string>`.
-   */
-  using std__vector_std__string_ = std::vector<std::string>;
-  inline std::vector<std::string> create_std__vector_std__string_(size_t size) noexcept {
-    std::vector<std::string> vector;
-    vector.reserve(size);
-    return vector;
-  }
-  
   // pragma MARK: std::shared_ptr<HybridUrlSchemeProbeSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridUrlSchemeProbeSpec>`.
@@ -52,13 +39,13 @@ namespace margelo::nitro::rootjaildetect::bridge::swift {
   using std__weak_ptr_HybridUrlSchemeProbeSpec_ = std::weak_ptr<HybridUrlSchemeProbeSpec>;
   inline std__weak_ptr_HybridUrlSchemeProbeSpec_ weakify_std__shared_ptr_HybridUrlSchemeProbeSpec_(const std::shared_ptr<HybridUrlSchemeProbeSpec>& strong) noexcept { return strong; }
   
-  // pragma MARK: Result<std::vector<std::string>>
-  using Result_std__vector_std__string__ = Result<std::vector<std::string>>;
-  inline Result_std__vector_std__string__ create_Result_std__vector_std__string__(const std::vector<std::string>& value) noexcept {
-    return Result<std::vector<std::string>>::withValue(value);
+  // pragma MARK: Result<bool>
+  using Result_bool_ = Result<bool>;
+  inline Result_bool_ create_Result_bool_(bool value) noexcept {
+    return Result<bool>::withValue(std::move(value));
   }
-  inline Result_std__vector_std__string__ create_Result_std__vector_std__string__(const std::exception_ptr& error) noexcept {
-    return Result<std::vector<std::string>>::withError(error);
+  inline Result_bool_ create_Result_bool_(const std::exception_ptr& error) noexcept {
+    return Result<bool>::withError(error);
   }
 
 } // namespace margelo::nitro::rootjaildetect::bridge::swift

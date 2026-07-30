@@ -16,7 +16,6 @@
 
 
 #include <string>
-#include <vector>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -49,7 +48,7 @@ namespace margelo::nitro::rootjaildetect {
 
     public:
       // Methods
-      virtual std::vector<std::string> checkSchemes(const std::vector<std::string>& schemes) = 0;
+      virtual bool canOpenUrl(const std::string& scheme) = 0;
 
     protected:
       // Hybrid Setup

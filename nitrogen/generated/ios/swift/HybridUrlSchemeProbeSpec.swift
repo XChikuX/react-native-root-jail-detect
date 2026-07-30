@@ -13,7 +13,7 @@ public protocol HybridUrlSchemeProbeSpec_protocol: HybridObject {
   
 
   // Methods
-  func checkSchemes(schemes: [String]) throws -> [String]
+  func canOpenUrl(scheme: String) throws -> Bool
 }
 
 public extension HybridUrlSchemeProbeSpec_protocol {

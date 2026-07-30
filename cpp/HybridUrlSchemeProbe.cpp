@@ -8,11 +8,11 @@ namespace margelo::nitro::rootjaildetect {
 
   HybridUrlSchemeProbe::HybridUrlSchemeProbe() : HybridObject(TAG) {}
 
-  std::vector<std::string> HybridUrlSchemeProbe::checkSchemes(const std::vector<std::string>& schemes) {
+  bool HybridUrlSchemeProbe::canOpenUrl(const std::string& scheme) {
     // No-op on Android and on host builds; real implementation is the Swift
     // HybridUrlSchemeProbe on iOS.
-    (void) schemes;
-    return {};
+    (void) scheme;
+    return false;
   }
 
   size_t HybridUrlSchemeProbe::getExternalMemorySize() noexcept {

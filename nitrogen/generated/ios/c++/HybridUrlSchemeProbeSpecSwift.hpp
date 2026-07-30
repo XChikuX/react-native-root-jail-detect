@@ -15,7 +15,6 @@ namespace RootJailDetect { class HybridUrlSchemeProbeSpec_cxx; }
 
 
 #include <string>
-#include <vector>
 
 #include "RootJailDetect-Swift-Cxx-Umbrella.hpp"
 
@@ -67,8 +66,8 @@ namespace margelo::nitro::rootjaildetect {
 
   public:
     // Methods
-    inline std::vector<std::string> checkSchemes(const std::vector<std::string>& schemes) override {
-      auto __result = _swiftPart.checkSchemes(schemes);
+    inline bool canOpenUrl(const std::string& scheme) override {
+      auto __result = _swiftPart.canOpenUrl(scheme);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

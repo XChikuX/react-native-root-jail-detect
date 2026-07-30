@@ -13,7 +13,6 @@
 
 #include <cstddef>
 #include <string>
-#include <vector>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -22,7 +21,7 @@ namespace margelo::nitro::rootjaildetect {
     HybridUrlSchemeProbe();
 
   public:
-    std::vector<std::string> checkSchemes(const std::vector<std::string>& schemes) override;
+    bool canOpenUrl(const std::string& scheme) override;
 
   public:
     size_t getExternalMemorySize() noexcept override;

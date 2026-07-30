@@ -277,12 +277,17 @@ namespace margelo::nitro::rootjaildetect {
         }
       }
       try {
-        std::vector<std::string> responding = probe->checkSchemes(context.urlSchemes);
-        if (context.urlSchemesPerSignal) {
-          for (const std::string& scheme : responding) {
-            result.signals.push_back(buildSignal("ios.urlscheme." + scheme, scheme + "://", includeEvidence));
+        bool anySchemeResponded = false;
+        for (const std::string& scheme : context.urlSchemes) {
+          bool canOpen = probe->canOpenUrl(scheme);
+          if (canOpen) {
+            anySchemeResponded = true;
+            if (context.urlSchemesPerSignal) {
+              result.signals.push_back(buildSignal("ios.urlscheme." + scheme, scheme + "://", includeEvidence));
+            }
           }
-        } else if (!responding.empty()) {
+        }
+        if (!context.urlSchemesPerSignal && anySchemeResponded) {
           result.signals.push_back(buildSignal(SignalId::IOS_URLSCHEME_JAILBREAK_STORE,
                                                "jailbreak-store-schemes", includeEvidence));
         }

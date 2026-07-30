@@ -16,14 +16,13 @@ import type { HybridObject } from 'react-native-nitro-modules';
  */
 export interface UrlSchemeProbe extends HybridObject<{ ios: 'swift'; android: 'c++' }> {
   /**
-   * Attempt to open `scheme://` via `UIApplication.canOpenURL`.
-   * Returns the list of schemes that returned `true`, filtered to those that
-   * are present in `LSApplicationQueriesSchemes`. A scheme that is not declared
-   * returns `false` from `canOpenURL` and is reported as unavailable — never as
-   * a false positive.
+   * Test whether `scheme://` can be opened via `UIApplication.canOpenURL`.
+   * Returns `true` if the scheme can be opened, `false` otherwise.
+   * A scheme that is not declared in `LSApplicationQueriesSchemes` returns
+   * `false` from `canOpenURL` — never a false positive.
    *
-   * The implementation must run on the main actor only for the UIKit call, and
+   * The implementation must run on the main actor to call the UIKit API, and
    * then return the result to the C++ caller.
    */
-  checkSchemes(schemes: string[]): string[];
+  canOpenUrl(scheme: string): boolean;
 }

@@ -125,20 +125,14 @@ open class HybridUrlSchemeProbeSpec_cxx {
 
   // Methods
   @inline(__always)
-  public final func checkSchemes(schemes: bridge.std__vector_std__string_) -> bridge.Result_std__vector_std__string__ {
+  public final func canOpenUrl(scheme: std.string) -> bridge.Result_bool_ {
     do {
-      let __result = try self.__implementation.checkSchemes(schemes: schemes.map({ __item in String(__item) }))
-      let __resultCpp = { () -> bridge.std__vector_std__string_ in
-        var __vector = bridge.create_std__vector_std__string_(__result.count)
-        for __item in __result {
-          __vector.push_back(std.string(__item))
-        }
-        return __vector
-      }()
-      return bridge.create_Result_std__vector_std__string__(__resultCpp)
+      let __result = try self.__implementation.canOpenUrl(scheme: String(scheme))
+      let __resultCpp = __result
+      return bridge.create_Result_bool_(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__vector_std__string__(__exceptionPtr)
+      return bridge.create_Result_bool_(__exceptionPtr)
     }
   }
 }

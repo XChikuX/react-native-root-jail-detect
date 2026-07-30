@@ -64,6 +64,7 @@
     "nitro.json",
     "nitrogen/generated",
     "app.plugin.js",
+    "react-native.config.js",
     "*.podspec",
     "!ios/build",
     "!android/build",

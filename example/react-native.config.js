@@ -22,10 +22,8 @@ module.exports = {
             'android',
             'CMakeLists.txt'
           ),
-          packageImportPath:
-            'import com.margelo.nitro.rootjaildetect.RootJailDetectOnLoad;',
-          packageInstance:
-            'com.margelo.nitro.rootjaildetect.RootJailDetectOnLoad.initializeNative();',
+          packageImportPath: 'import com.rootjaildetect.RootJailDetectPackage;',
+          packageInstance: 'new RootJailDetectPackage()',
         },
       },
     },

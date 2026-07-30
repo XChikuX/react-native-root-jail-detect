@@ -29,6 +29,8 @@ add_library(
   ../../cpp/IOSChecks.cpp
   ../../cpp/TcpProbe.cpp
   ../../cpp/HybridUrlSchemeProbe.cpp
+  # JNI_OnLoad entry point for Nitro Modules autolinking
+  ../../cpp/cpp-adapter.cpp
 )
 
 # Hand-written implementations live in cpp/ at the package root.

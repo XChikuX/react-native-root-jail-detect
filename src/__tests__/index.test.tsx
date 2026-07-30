@@ -126,8 +126,13 @@ describe('@psync/anti-jailbreak wrappers', () => {
     });
 
     it('rethrows native errors (logs and rethrows, per legacy contract)', async () => {
+      const consoleSpy = jest.spyOn(console, 'error');
       mockCheckDetailed.mockRejectedValue(new Error('native boom'));
       await expect(isDeviceCompromised()).rejects.toThrow('native boom');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Error checking device security:',
+        expect.any(Error)
+      );
     });
   });
 
@@ -162,8 +167,13 @@ describe('@psync/anti-jailbreak wrappers', () => {
     });
 
     it('returns false (safe fallback) when native rejects', async () => {
+      const consoleSpy = jest.spyOn(console, 'error');
       mockCheckDetailed.mockRejectedValue(new Error('native boom'));
       await expect(isEmulator()).resolves.toBe(false);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Error checking emulator status:',
+        expect.any(Error)
+      );
     });
   });
 
@@ -176,8 +186,13 @@ describe('@psync/anti-jailbreak wrappers', () => {
     });
 
     it('returns false (safe fallback) when native rejects', async () => {
+      const consoleSpy = jest.spyOn(console, 'error');
       mockCheckDetailed.mockRejectedValue(new Error('native boom'));
       await expect(isDebuggerAttached()).resolves.toBe(false);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Error checking debugger status:',
+        expect.any(Error)
+      );
     });
   });
 
@@ -231,8 +246,24 @@ describe('@psync/anti-jailbreak wrappers', () => {
     });
 
     it('returns [] (safe fallback) when native rejects', async () => {
+      const consoleSpy = jest.spyOn(console, 'error');
       mockCheckDetailed.mockRejectedValue(new Error('native boom'));
       await expect(getDetectionReasons()).resolves.toEqual([]);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Error checking detection reasons:',
+        expect.any(Error)
+      );
+    });
+
+    it('falls back to raw signal id when evidence is missing and signal is unmapped', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [stubSignal('custom.unmapped.signal', { evidence: undefined })],
+        })
+      );
+      await expect(getDetectionReasons()).resolves.toEqual([
+        'custom.unmapped.signal',
+      ]);
     });
 
     it('returns human-readable text for every cataloged signal id', async () => {
@@ -346,6 +377,38 @@ describe('@psync/anti-jailbreak wrappers', () => {
       mockWatchdogStop.mockResolvedValue(undefined);
       stopSecurityWatchdog();
       expect(mockWatchdogStop).toHaveBeenCalled();
+    });
+
+    it('logs console error when startSecurityWatchdog native promise rejects', async () => {
+      const consoleSpy = jest.spyOn(console, 'error');
+      const err = new Error('watchdog start failed');
+      mockWatchdogStart.mockRejectedValue(err);
+
+      startSecurityWatchdog();
+
+      // Wait a tick for the fireAsync promise catch handler to run
+      await new Promise<void>((resolve) => setTimeout(() => resolve(), 0));
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Failed to start security watchdog:',
+        err
+      );
+    });
+
+    it('logs console error when stopSecurityWatchdog native promise rejects', async () => {
+      const consoleSpy = jest.spyOn(console, 'error');
+      const err = new Error('watchdog stop failed');
+      mockWatchdogStop.mockRejectedValue(err);
+
+      stopSecurityWatchdog();
+
+      // Wait a tick for the fireAsync promise catch handler to run
+      await new Promise<void>((resolve) => setTimeout(() => resolve(), 0));
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Failed to stop security watchdog:',
+        err
+      );
     });
   });
 });

@@ -192,7 +192,7 @@
     "typecheck": "tsc"
   },
   "types": "./lib/typescript/src/index.d.ts",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "workspaces": [
     "example"
   ]

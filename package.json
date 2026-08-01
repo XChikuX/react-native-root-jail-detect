@@ -121,7 +121,7 @@
   "peerDependencies": {
     "react": "*",
     "react-native": "*",
-    "react-native-nitro-modules": "~0.35.1"
+    "react-native-nitro-modules": ">=0.35.10"
   },
   "peerDependenciesMeta": {
     "@expo/config-plugins": {

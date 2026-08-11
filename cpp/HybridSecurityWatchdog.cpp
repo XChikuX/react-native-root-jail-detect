@@ -46,7 +46,15 @@ namespace margelo::nitro::rootjaildetect {
   }
 
   std::shared_ptr<Promise<void>> HybridSecurityWatchdog::start(const SecurityWatchdogOptions& options) {
-    return Promise<void>::async([this, options]() -> void {
+    // Capture a strong reference so the object cannot be destroyed (e.g. JS
+    // runtime teardown or reload) while this async transition is still in
+    // flight on a Nitro worker thread. Capturing raw `this` here was a
+    // use-after-free crash path that surfaces as a native abort with no JS log.
+    // `dynamic_pointer_cast` (not `static_pointer_cast`): Nitro's HybridObject
+    // is a *virtual* base, so a static downcast does not compile.
+    std::shared_ptr<HybridSecurityWatchdog> self =
+      std::dynamic_pointer_cast<HybridSecurityWatchdog>(shared_from_this());
+    return Promise<void>::async([self, this, options]() -> void {
       const double intervalMs = options.intervalMs.value_or(3000.0);
       if (!std::isfinite(intervalMs) || intervalMs <= 0.0) {
         throw std::invalid_argument("intervalMs must be a positive finite value.");
@@ -97,7 +105,10 @@ namespace margelo::nitro::rootjaildetect {
   }
 
   std::shared_ptr<Promise<void>> HybridSecurityWatchdog::stop() {
-    return Promise<void>::async([this]() -> void {
+    // Same strong-capture rationale as `start()`.
+    std::shared_ptr<HybridSecurityWatchdog> self =
+      std::dynamic_pointer_cast<HybridSecurityWatchdog>(shared_from_this());
+    return Promise<void>::async([self, this]() -> void {
       // Serialize against concurrent `start()`/`stop()` so the flag flip, the
       // thread-handle move, and the join form one atomic transition.
       std::scoped_lock startLock(_startMutex);

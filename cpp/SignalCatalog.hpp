@@ -226,7 +226,9 @@ namespace margelo::nitro::rootjaildetect {
   // for casual static inspection.
   template <size_t N>
   struct ObfuscatedString {
-    constexpr ObfuscatedString(const char (&str)[N])
+    // Not constexpr: the lazy per-instance decryption cache (a std::string)
+    // cannot be a member of a literal type.
+    explicit ObfuscatedString(const char (&str)[N])
         : size(N - 1) {
       for (size_t i = 0; i < size; ++i) {
         data[i] = str[i] ^ key(i);
@@ -243,12 +245,13 @@ namespace margelo::nitro::rootjaildetect {
     }
 
     const char* c_str() const noexcept {
-      // Not thread-safe; intended for one-time decryption at startup.
-      static thread_local std::string cached;
-      if (cached.empty()) {
-        cached = decrypt();
+      // Per-instance cache. A function-local `static` here would be shared by
+      // every instance with the same template size N, so two different
+      // same-length strings would alias one cache and return the wrong value.
+      if (cached_.empty() && size > 0) {
+        cached_ = decrypt();
       }
-      return cached.c_str();
+      return cached_.c_str();
     }
 
    private:
@@ -259,6 +262,7 @@ namespace margelo::nitro::rootjaildetect {
 
     char data[N - 1];
     size_t size;
+    mutable std::string cached_;
   };
 
   /// Default weight, severity, category, and reliability for a signal id. The

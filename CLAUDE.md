@@ -24,7 +24,7 @@ Use the versions and package manager committed to the repository:
 - TypeScript: `7.0.x` strict mode (TypeScript 7+ removed `noImplicitUseStrict` / `noStrictGenericChecks`; do not reintroduce them)
 - ESLint: `10.x`, native flat config in `eslint.config.mjs` (do not reintroduce the legacy `FlatCompat` wrapper around `@react-native/eslint-config` — it uses ESLint internals removed in v10)
 - Jest: `30.x`. The Jest config in `package.json` overrides `testEnvironment` to `jest/environment.js`, which re-exports the top-level `jest-environment-node` (v30). Do **not** add a `package.json` `overrides` entry for `jest-environment-node` — npm 11 rejects it as a direct-dependency conflict, which breaks `npm publish` and CI. The `jest/environment.js` shim is the only workaround that satisfies both Bun and npm.
-- Nitro Modules: `react-native-nitro-modules` + `nitrogen` codegen. `peerDependencies` pins `~0.35.1`; `0.36.x` is also verified (see the compatibility matrix in `README.md`). The committed `nitrogen/generated/` tree was produced by nitrogen `0.36.1`, so regenerate with a matching nitrogen CLI (`npx nitrogen@0.36.1` — the CLI is **not** in `node_modules/.bin`; `bun run specs` resolves it from the workspace).
+- Nitro Modules: `react-native-nitro-modules` + `nitrogen` codegen. `peerDependencies` allows `>=0.35.10`; `0.35.10+` and `0.36.x` are verified (see the compatibility matrix in `README.md`), `0.37.x+` is unverified. The committed `nitrogen/generated/` tree was produced by nitrogen `0.36.1`, so regenerate with a matching nitrogen CLI (`npx nitrogen@0.36.1` — the CLI is **not** in `node_modules/.bin`; `bun run specs` resolves it from the workspace).
 - Android: Kotlin `2.2.0`, min SDK 24, compile/target SDK 36, AGP `8.8.2` (library) — example app uses the React Native Gradle plugin's AGP, Gradle `9.0.0`, and NDK `27.1.12297006`. Gradle may run on JDK 17, 21, or 23; JDK 21 is valid and does not require installing JDK 17. Java and Kotlin bytecode must both target JVM 17 (`sourceCompatibility`/`targetCompatibility` and Kotlin `jvmTarget`/`compilerOptions.jvmTarget`) to avoid incompatible class targets. When the app uses a newer runtime JDK, configure this target consistently for the app and every Android subproject, including autolinked dependencies.
 - iOS: minimum version supplied by React Native's `min_ios_version_supported`, Xcode 16.4+ (validated on Xcode 26.5), Swift 5.9+, C++20
 
@@ -54,7 +54,7 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 ### Shared C++ core
 
 - `cpp/HybridRootJailDetect.hpp` / `.cpp` — shared C++ implementation of the root HybridObject. Owns resolved configuration and lazily creates the watchdog. Stays as orchestration: resolves config, measures the total `timeoutMs` budget, delegates platform work to focused helper files, and aggregates signals into a `CompromiseAssessment`. Overrides both `checkDetailed()` and `assessRisk()` (the latter is a documented alias that delegates to `checkDetailed()`; it is a pure virtual on the nitrogen-generated base, so it **must** be overridden or the class becomes abstract and fails Nitro's default-constructible autolinking assertion).
-- `cpp/HybridSecurityWatchdog.hpp` / `.cpp` — shared C++ implementation of the watchdog HybridObject. Owns the background thread and lifecycle state and consumes `checkDetailed()` (no duplicated boolean logic). Serializes `start()`/`stop()` transitions with a dedicated mutex so two concurrent Nitro-worker-thread invocations cannot spawn duplicate background loops; `run()` only takes the lifecycle mutex during its timed sleep so the join in `start()`/`stop()` cannot deadlock.
+- `cpp/HybridSecurityWatchdog.hpp` / `.cpp` — shared C++ implementation of the watchdog HybridObject. Owns the background thread and lifecycle state and consumes `checkDetailed()` (no duplicated boolean logic). Serializes `start()`/`stop()` transitions with a dedicated mutex so two concurrent Nitro-worker-thread invocations cannot spawn duplicate background loops; `run()` only takes the lifecycle mutex during its timed sleep so the join in `start()`/`stop()` cannot deadlock. The async `start()`/`stop()` Promises capture a strong `shared_from_this()` reference so the watchdog cannot be destroyed (JS runtime teardown/reload) while a lifecycle transition is in flight on a worker thread — a raw `this` capture there is a use-after-free abort with no JS log.
 - `cpp/DeviceRiskAssessment.hpp` / `.cpp` — the blocking assessment entry point shared by the root API and the watchdog. Picks the platform-specific check runner under `#if defined(__ANDROID__)`, computes `elapsedMs`, runs the aggregator, and folds the result together with `treatDebuggerAsCompromise`. Keeping this path singular prevents the watchdog's compromise decision from drifting from `checkDetailed()`.
 - `cpp/IOSChecks.hpp` / `.cpp` — conservative iOS-only probes (jailbreak artifact paths, `_dyld` loaded-image scan, `sysctl` debugger state, simulator flag). Body compiled under `#if defined(__APPLE__)` so Android and host builds stay safe. Routes every signal through `SignalCatalog::lookupSignal()` so weights and severities never drift from the catalog.
 - `cpp/SignalCatalog.hpp` / `.cpp` — stable, public signal ids (`SignalId::*`) and their default severity/score weights, plus `lookupSignal(id)`. Signal ids are part of the public contract: callers and backends use them to reason about which checks fired, so they must never be renamed or reused for a different meaning once published. Weights mirror the risk table in the "Signal Catalog" section of `README.md`.
@@ -71,7 +71,7 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 - `android/CMakeLists.txt` — builds the `RootJailDetect` shared library, compiles the hand-written C++ HybridObjects and the detection helpers (`HybridRootJailDetect`, `HybridSecurityWatchdog`, `HybridUrlSchemeProbe` (no-op), `HybridPackageManagerProbe` (no-op), `cpp-adapter`, `DeviceRiskAssessment`, `SignalCatalog`, `ProcParsers`, `AndroidProbes`, `AndroidChecks`, `IOSChecks`, `TcpProbe`), and includes the generated autolinking cmake. `IOSChecks` and `TcpProbe` are included so the same files compile on both platforms; platform-specific code is guarded by `#if defined(__ANDROID__)` / `#elif defined(__APPLE__)` and is otherwise empty.
 - `android/build.gradle` — Android library config; pins Kotlin `2.2.0`, AGP `8.8.2`, `minSdk` 24, `compileSdk`/`targetSdk` 36, and JVM 17 output for both Java (`sourceCompatibility`/`targetCompatibility`) and Kotlin (`jvmTarget`); applies the generated Nitro autolinking gradle and points `externalNativeBuild` at `CMakeLists.txt`.
 - `android/src/main/AndroidManifest.xml` — library manifest declaring the narrow `<queries>` set used by the Expo config plugin (`app.plugin.js`).
-- Kotlin edge HybridObject for Play Integrity token acquisition remains intentionally deferred — Play Integrity is server-attestation work and `RootJailDetectOptions.enablePlayIntegrity` is documented as such. PackageManager enumeration is shipped as the `PackageManagerProbe` HybridObject (Kotlin edge, `android/src/main/java/com/rootjaildetect/HybridPackageManagerProbe.kt`).
+- Kotlin edge HybridObject for Play Integrity token acquisition remains intentionally deferred — Play Integrity is server-attestation work and `RootJailDetectOptions.enablePlayIntegrity` is documented as such. PackageManager enumeration is shipped as the `PackageManagerProbe` HybridObject (Kotlin edge, `android/src/main/java/com/margelo/nitro/rootjaildetect/HybridPackageManagerProbe.kt`).
 
 ### iOS
 
@@ -113,7 +113,7 @@ Consumer
 
 `checkDetailed()` is the primary, structured API and returns a `CompromiseAssessment` (score, signals, confidence `'low'|'medium'|'high'|'extreme'`, debugger state, partial flag). `DeviceRiskResult` is kept as a deprecated type alias for backwards compatibility. `assessRisk()` is an alias for `checkDetailed()`. The legacy boolean wrappers are derived from the assessment so all detection logic lives in one place.
 
-`DetectionSignal` carries extra context helpful for UI, analytics, and issue triage: `platform`, `category` (`filesystem`, `mount`, `injection`, `debugger`, `emulator`, `hooking`, `runtime`, `integrity`, `volume`, `urlScheme`, `info`, ...), `detected`, and a `reliability` score `0..1`. Unavailable checks are represented as signals with `detected: false` and `unavailable: true`.
+`DetectionSignal` carries extra context helpful for UI, analytics, and issue triage: `platform`, `category` (closed enum: `filesystem`, `sandbox`, `mount`, `process`, `injection`, `hook`, `property`, `package`, `signature`, `debugger` — source of truth `src/specs/SignalCategory.ts`), `detected`, and a `reliability` score `0..1`. Unavailable checks are represented as signals with `detected: false` and `unavailable: true`.
 
 **Implementation status:** the Android scored baseline lives in shared C++ — `/proc/self/maps` (library-name and executable-anonymous-mapping scans), `/proc/self/mountinfo` + `/proc/self/mounts` (root-artifact and mount-chain candidates), `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties plus property-consistency and Magisk-prop-leak cross-checks, custom-ROM/LineageOS markers, `/system/addon.d` and install-recovery persistence probes, Magisk `module.prop` tree enumeration, hosts writability, runtime instrumentation (Frida cmdline + local socket, `su`/`magisk` PATH lookups), PackageManager root/hiding/risky package enumeration, sandbox write probes, and `TracerPid` as informational. iOS Phase 1 checks (jailbreak artifact paths, `_dyld` loaded-image scan, `sysctl` debugger state, simulator flag) live in shared C++ at `cpp/IOSChecks.cpp`; the iOS-only `UrlSchemeProbe` (Swift edge, `ios/HybridUrlSchemeProbe.swift`) probes jailbreak-store URL schemes via `UIApplication.canOpenURL`, called one scheme at a time from `cpp/IOSChecks.cpp`. The security watchdog has its real background loop in `cpp/HybridSecurityWatchdog.cpp`. The C++ is not Windows-compilable — a Gradle build with the NDK must be run on macOS/Linux/WSL for native validation before publishing.
 
@@ -373,6 +373,31 @@ Expected: `BUILD SUCCESSFUL`. The CMake/NDK pass of `:psync_anti-jailbreak` comp
 - `turbo` does not always forward the custom `JAVA_HOME` to nested gradlew invocations on this toolchain mix.
 
 Use the direct invocations above for local validation. The CI workflows in `.github/workflows/ci.yml` use the turbo versions inside a clean GitHub Actions runner where the toolchains are already on PATH.
+
+### Debugging consumer-side runtime crashes
+
+If a host app crashes at runtime with no JS/Metro output, the failure is almost
+certainly native — JS logs never see it. Diagnose with `adb logcat` (look for
+`DEBUG`, `libc`, `Fatal signal`, or `RootJailDetectOnLoad` tags). Known causes,
+in order of likelihood:
+
+1. `react-native-nitro-modules` version skew — the app resolved a Nitro version
+   outside the verified range (see the README compatibility matrix) and the
+   committed bindings are ABI-incompatible. Check the resolved version in the
+   host app's lockfile.
+2. R8/ProGuard renaming the JNI-instantiated Kotlin classes. Consumers must NOT
+   repackage `com.margelo.nitro.rootjaildetect.**` (see
+   `android/proguard-rules.pro`); the classes are looked up by name from C++.
+3. `System.loadLibrary("RootJailDetect")` failing — autolinking not applied in
+   the host app (Expo prebuild or manual linking issues).
+
+Note: `cpp/cpp-adapter.cpp` wraps the generated `registerAllNatives()` in a
+try/catch and re-registers the three pure-C++ HybridObjects individually on
+failure. This exists because the Kotlin `PackageManagerProbe` registration
+path touches JVM classes at `JNI_OnLoad` time; if that fails in a consumer
+app (R8 renames, missing Kotlin classes), the library degrades to the no-op
+C++ probe stub instead of aborting the process at load time. Keep this guard
+when regenerating bindings.
 
 ### Gotchas (machine-specific)
 

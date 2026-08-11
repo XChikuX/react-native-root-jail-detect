@@ -65,6 +65,7 @@ const {
   checkDetailed,
   assessRisk,
   configure,
+  setDetectionCallback,
   startSecurityWatchdog,
   stopSecurityWatchdog,
 } = require('../index');
@@ -117,6 +118,9 @@ describe('@psync/anti-jailbreak wrappers', () => {
     jest.clearAllMocks();
     setPlatform('android');
     jest.spyOn(console, 'error').mockImplementation(() => {});
+    // The telemetry callback is module-level state; reset it so registrations
+    // made in one test never leak into the next.
+    setDetectionCallback(undefined);
   });
 
   describe('isDeviceCompromised()', () => {
@@ -278,8 +282,13 @@ describe('@psync/anti-jailbreak wrappers', () => {
         'android.build.debuggable',
         'android.build.adb_root',
         'android.build.ro_secure_zero',
+        'android.sandbox.write',
+        'android.check.sandbox',
+        'android.package_manager.root',
         'ios.network.frida',
         'ios.network.ssh',
+        'ios.sandbox.write',
+        'ios.check.sandbox',
       ];
       mockCheckDetailed.mockResolvedValue(
         stubResult({
@@ -297,6 +306,126 @@ describe('@psync/anti-jailbreak wrappers', () => {
       }
       // Sanity: at least one distinct reason per *unique reason text* class.
       expect(new Set(reasons).size).toBeGreaterThanOrEqual(3);
+    });
+
+    it('maps the PackageManagerProbe and sandbox signal ids to human-readable text', async () => {
+      const newIds = [
+        'android.sandbox.write',
+        'android.check.sandbox',
+        'android.package_manager.root',
+        'ios.sandbox.write',
+        'ios.check.sandbox',
+      ];
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({ signals: newIds.map((id) => stubSignal(id)) })
+      );
+      const reasons = await getDetectionReasons();
+      expect(reasons).toContain(
+        'A known root management package was detected via PackageManager.'
+      );
+      expect(reasons).toContain('A sandbox write to a restricted path succeeded.');
+      expect(reasons).toContain(
+        'The sandbox write test did not complete within the time budget.'
+      );
+      // The text is shared across platform variants, so reasons dedupe to 3;
+      // no raw signal id may leak through the fallback path.
+      expect(reasons).toHaveLength(3);
+      for (const id of newIds) {
+        expect(reasons).not.toContain(id);
+      }
+    });
+  });
+
+  describe('setDetectionCallback() telemetry', () => {
+    it('does not emit when no callback is registered', async () => {
+      const spy = jest.fn();
+      mockCheckDetailed.mockResolvedValue(stubResult({ score: 12 }));
+      await checkDetailed();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('emits the assessment and metadata after checkDetailed() resolves', async () => {
+      const result = stubResult({ score: 42, compromised: true });
+      mockCheckDetailed.mockResolvedValue(result);
+      const spy = jest.fn();
+      setDetectionCallback(spy);
+
+      await expect(checkDetailed()).resolves.toBe(result);
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith(result, {
+        platform: 'android',
+        timestampMs: expect.any(Number),
+      });
+    });
+
+    it('emits after assessRisk() too (alias path)', async () => {
+      const result = stubResult({ score: 7, confidence: 'medium' });
+      mockCheckDetailed.mockResolvedValue(result);
+      const spy = jest.fn();
+      setDetectionCallback(spy);
+
+      await assessRisk();
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith(result, {
+        platform: 'android',
+        timestampMs: expect.any(Number),
+      });
+    });
+
+    it('reports Platform.OS in the event metadata', async () => {
+      setPlatform('ios');
+      mockCheckDetailed.mockResolvedValue(stubResult({ platform: 'ios' }));
+      const spy = jest.fn();
+      setDetectionCallback(spy);
+
+      await checkDetailed();
+
+      expect(spy).toHaveBeenCalledWith(
+        expect.objectContaining({ platform: 'ios' }),
+        { platform: 'ios', timestampMs: expect.any(Number) }
+      );
+    });
+
+    it('setDetectionCallback(undefined) deregisters the callback', async () => {
+      const spy = jest.fn();
+      setDetectionCallback(spy);
+      setDetectionCallback(undefined);
+      mockCheckDetailed.mockResolvedValue(stubResult());
+
+      await checkDetailed();
+
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('does not emit when the native pass rejects', async () => {
+      const spy = jest.fn();
+      setDetectionCallback(spy);
+      mockCheckDetailed.mockRejectedValue(new Error('native boom'));
+
+      await expect(checkDetailed()).rejects.toThrow('native boom');
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('swallows callback exceptions without failing checkDetailed()', async () => {
+      const consoleSpy = jest.spyOn(console, 'error');
+      const boom = new Error('telemetry boom');
+      mockCheckDetailed.mockResolvedValue(stubResult({ score: 5 }));
+      setDetectionCallback(() => {
+        throw boom;
+      });
+
+      await expect(checkDetailed()).resolves.toEqual(
+        expect.objectContaining({ score: 5 })
+      );
+      expect(consoleSpy).toHaveBeenCalledWith('Detection callback threw:', boom);
+    });
+
+    it('is exposed as a named export and on the default object', () => {
+      const defaultExport = require('../index').default;
+      expect(typeof setDetectionCallback).toBe('function');
+      expect(defaultExport.setDetectionCallback).toBe(setDetectionCallback);
     });
   });
 

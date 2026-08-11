@@ -81,10 +81,37 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_CHECK_SANDBOX) return makeSpec(SignalId::ANDROID_CHECK_SANDBOX, Severity::LOW, SignalCategory::DEBUGGER, 0.0, 0.0);
     if (id == SignalId::ANDROID_SANDBOX_WRITE) return makeSpec(SignalId::ANDROID_SANDBOX_WRITE, Severity::HIGH, SignalCategory::SANDBOX, 30.0, 0.80);
     if (id == SignalId::ANDROID_PACKAGE_MANAGER_ROOT) return makeSpec(SignalId::ANDROID_PACKAGE_MANAGER_ROOT, Severity::HIGH, SignalCategory::PACKAGE, 25.0, 0.75);
+    // These additions are deliberately conservative. Several are candidate
+    // heuristics whose false-positive profile still needs device fixtures.
+    if (id == SignalId::ANDROID_MODULES_MAGISK) return makeSpec(SignalId::ANDROID_MODULES_MAGISK, Severity::LOW, SignalCategory::PACKAGE, 10.0, 0.35);
+    if (id == SignalId::ANDROID_MODULES_HIDING) return makeSpec(SignalId::ANDROID_MODULES_HIDING, Severity::LOW, SignalCategory::PACKAGE, 10.0, 0.45);
+    if (id == SignalId::ANDROID_MODULES_SPOOFING) return makeSpec(SignalId::ANDROID_MODULES_SPOOFING, Severity::LOW, SignalCategory::PACKAGE, 10.0, 0.45);
+    if (id == SignalId::ANDROID_ADDON_D_MAGISK) return makeSpec(SignalId::ANDROID_ADDON_D_MAGISK, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.80);
+    if (id == SignalId::ANDROID_INSTALL_RECOVERY) return makeSpec(SignalId::ANDROID_INSTALL_RECOVERY, Severity::LOW, SignalCategory::FILESYSTEM, 5.0, 0.35);
+    if (id == SignalId::ANDROID_HOSTS_WRITABLE) return makeSpec(SignalId::ANDROID_HOSTS_WRITABLE, Severity::LOW, SignalCategory::FILESYSTEM, 5.0, 0.30);
+    if (id == SignalId::ANDROID_CUSTOM_ROM) return makeSpec(SignalId::ANDROID_CUSTOM_ROM, Severity::LOW, SignalCategory::SIGNATURE, 10.0, 0.65);
+    if (id == SignalId::ANDROID_LINEAGE) return makeSpec(SignalId::ANDROID_LINEAGE, Severity::LOW, SignalCategory::SIGNATURE, 10.0, 0.75);
+    if (id == SignalId::ANDROID_LSPOSED_CACHE) return makeSpec(SignalId::ANDROID_LSPOSED_CACHE, Severity::LOW, SignalCategory::HOOK, 10.0, 0.40);
+    if (id == SignalId::ANDROID_MAPS_ANON_INJECTION) return makeSpec(SignalId::ANDROID_MAPS_ANON_INJECTION, Severity::LOW, SignalCategory::INJECTION, 10.0, 0.25);
+    if (id == SignalId::ANDROID_PROPS_INCONSISTENT_DEBUGGABLE) return makeSpec(SignalId::ANDROID_PROPS_INCONSISTENT_DEBUGGABLE, Severity::LOW, SignalCategory::PROPERTY, 5.0, 0.25);
+    if (id == SignalId::ANDROID_PROPS_INCONSISTENT_VERIFIEDBOOT) return makeSpec(SignalId::ANDROID_PROPS_INCONSISTENT_VERIFIEDBOOT, Severity::LOW, SignalCategory::PROPERTY, 5.0, 0.30);
+    if (id == SignalId::ANDROID_PROPS_INCONSISTENT_FINGERPRINT) return makeSpec(SignalId::ANDROID_PROPS_INCONSISTENT_FINGERPRINT, Severity::LOW, SignalCategory::PROPERTY, 5.0, 0.30);
+    if (id == SignalId::ANDROID_MAGISK_DISABLE_PROP) return makeSpec(SignalId::ANDROID_MAGISK_DISABLE_PROP, Severity::LOW, SignalCategory::PROPERTY, 10.0, 0.55);
+    if (id == SignalId::ANDROID_PACKAGE_MANAGER_HMA) return makeSpec(SignalId::ANDROID_PACKAGE_MANAGER_HMA, Severity::MEDIUM, SignalCategory::PACKAGE, 15.0, 0.65);
+    if (id == SignalId::ANDROID_PACKAGE_MANAGER_RISKY) return makeSpec(SignalId::ANDROID_PACKAGE_MANAGER_RISKY, Severity::LOW, SignalCategory::PACKAGE, 5.0, 0.25);
+    if (id == SignalId::ANDROID_ZYGISK_VARIANT_OFFICIAL) return makeSpec(SignalId::ANDROID_ZYGISK_VARIANT_OFFICIAL, Severity::LOW, SignalCategory::INJECTION, 5.0, 0.25);
+    if (id == SignalId::ANDROID_ZYGISK_VARIANT_ASSISTANT) return makeSpec(SignalId::ANDROID_ZYGISK_VARIANT_ASSISTANT, Severity::LOW, SignalCategory::INJECTION, 5.0, 0.35);
+    if (id == SignalId::ANDROID_ZYGISK_VARIANT_NEXT) return makeSpec(SignalId::ANDROID_ZYGISK_VARIANT_NEXT, Severity::LOW, SignalCategory::INJECTION, 5.0, 0.35);
+    if (id == SignalId::ANDROID_ZYGISK_VARIANT_REZYGISK) return makeSpec(SignalId::ANDROID_ZYGISK_VARIANT_REZYGISK, Severity::LOW, SignalCategory::INJECTION, 5.0, 0.35);
+    if (id == SignalId::ANDROID_SANDBOX_WRITE_SYSTEM_DIR) return makeSpec(SignalId::ANDROID_SANDBOX_WRITE_SYSTEM_DIR, Severity::HIGH, SignalCategory::SANDBOX, 30.0, 0.85);
+    if (id == SignalId::ANDROID_CMDLINE_SU_EXEC) return makeSpec(SignalId::ANDROID_CMDLINE_SU_EXEC, Severity::LOW, SignalCategory::PROCESS, 10.0, 0.45);
+    if (id == SignalId::ANDROID_CMDLINE_MAGISK_EXEC) return makeSpec(SignalId::ANDROID_CMDLINE_MAGISK_EXEC, Severity::LOW, SignalCategory::PROCESS, 10.0, 0.55);
+    if (id == SignalId::ANDROID_ENV_PATH_MAGISK) return makeSpec(SignalId::ANDROID_ENV_PATH_MAGISK, Severity::LOW, SignalCategory::PROCESS, 5.0, 0.25);
+    if (id == SignalId::ANDROID_MOUNT_MAGISK_CHAIN) return makeSpec(SignalId::ANDROID_MOUNT_MAGISK_CHAIN, Severity::LOW, SignalCategory::MOUNT, 5.0, 0.25);
     if (id == SignalId::ANDROID_CHECK_MAPS || id == SignalId::ANDROID_CHECK_MOUNTS ||
         id == SignalId::ANDROID_CHECK_SELINUX || id == SignalId::ANDROID_CHECK_ROOT_PATHS ||
         id == SignalId::ANDROID_CHECK_PROPERTIES || id == SignalId::ANDROID_CHECK_DEBUGGER ||
-        id == SignalId::ANDROID_CHECK_RUNTIME || id == SignalId::IOS_CHECK_JAILBREAK ||
+         id == SignalId::ANDROID_CHECK_RUNTIME || id == SignalId::ANDROID_CHECK_MODULES || id == SignalId::IOS_CHECK_JAILBREAK ||
         id == SignalId::IOS_CHECK_DYLD || id == SignalId::IOS_CHECK_DEBUGGER ||
         id == SignalId::IOS_CHECK_URLSCHEME) {
       return makeSpec(id, Severity::LOW, SignalCategory::DEBUGGER, 0.0, 0.0);

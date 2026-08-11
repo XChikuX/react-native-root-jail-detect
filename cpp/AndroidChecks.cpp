@@ -105,6 +105,7 @@ namespace margelo::nitro::rootjaildetect {
       result.partial = true;
     } else if (auto maps = readFileIfExists(K_PROC_MAPS, deadline, 256 * 1024)) {
       appendFindings(result.signals, scanMapsForHooks(*maps), includeEvidence);
+      appendFindings(result.signals, scanMapsForAnonymousInjection(*maps), includeEvidence);
     } else {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MAPS));
     }
@@ -124,6 +125,7 @@ namespace margelo::nitro::rootjaildetect {
           scanMountsForRootArtifacts(mountinfo.value_or(""), mounts.value_or("")),
           includeEvidence
         );
+        appendFindings(result.signals, scanMountsForMagiskChain(mountinfo.value_or("")), includeEvidence);
         if (mountinfo.has_value()) {
           if (auto initMountinfo = readFileIfExists(K_INIT_MOUNTINFO, deadline, 128 * 1024)) {
             appendFindings(result.signals,
@@ -156,6 +158,15 @@ namespace margelo::nitro::rootjaildetect {
       result.partial = true;
     } else {
       appendFindings(result.signals, probeRootPaths(), includeEvidence);
+      appendFindings(result.signals, probeAddonD(), includeEvidence);
+      appendFindings(result.signals, probeInstallRecovery(), includeEvidence);
+      appendFindings(result.signals, probeLspdCache(), includeEvidence);
+
+      ModuleProbeResult modules = probeMagiskModules(deadline);
+      appendFindings(result.signals, modules.findings, includeEvidence);
+      if (!modules.available) {
+        result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MODULES));
+      }
     }
 
     // ---- Build / verified-boot properties ----------------------------------
@@ -163,7 +174,16 @@ namespace margelo::nitro::rootjaildetect {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_PROPERTIES));
       result.partial = true;
     } else {
-      appendFindings(result.signals, probeBuildProperties(), includeEvidence);
+      appendFindings(result.signals, probeSystemAttributes(), includeEvidence);
+      appendFindings(result.signals, probeCustomRom(), includeEvidence);
+    }
+
+    // A writable hosts file is a narrow tampering check. Merely finding local
+    // ad-blocking entries is intentionally not evidence.
+    if (expired(deadline)) {
+      result.partial = true;
+    } else {
+      appendFindings(result.signals, probeHostsFile(), includeEvidence);
     }
 
     // ---- Debugger: TracerPid (informational) -------------------------------
@@ -209,6 +229,7 @@ namespace margelo::nitro::rootjaildetect {
       if (!available) {
         result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_RUNTIME));
       }
+      appendFindings(result.signals, probeEnvironmentAndCommands(), includeEvidence);
     }
 
     // ---- Sandbox write test -------------------------------------------------
@@ -226,6 +247,7 @@ namespace margelo::nitro::rootjaildetect {
           buildSignal(SignalId::ANDROID_SANDBOX_WRITE, "sandbox-write-success", includeEvidence)
         );
       }
+      appendFindings(result.signals, probeSystemDirectoryWrite(), includeEvidence);
     }
 
     // ---- PackageManager enumeration -----------------------------------------
@@ -247,12 +269,27 @@ namespace margelo::nitro::rootjaildetect {
         std::vector<std::string> rootPackages = probe->getInstalledRootPackages();
         if (!rootPackages.empty()) {
           for (const auto& pkg : rootPackages) {
-            (void)pkg;
             result.signals.push_back(
-              buildSignal(SignalId::ANDROID_PACKAGE_MANAGER_ROOT, "root-package-detected", includeEvidence)
+              buildSignal(SignalId::ANDROID_PACKAGE_MANAGER_ROOT, "root-package:" + pkg, includeEvidence)
             );
             break;  // Only emit one signal for the first detected package
           }
+        }
+        std::vector<std::string> hidingPackages = probe->getInstalledHidingPackages();
+        if (!hidingPackages.empty()) {
+          result.signals.push_back(buildSignal(
+            SignalId::ANDROID_PACKAGE_MANAGER_HMA,
+            "hiding-package:" + hidingPackages.front(),
+            includeEvidence
+          ));
+        }
+        std::vector<std::string> riskyPackages = probe->getInstalledRiskyPackages();
+        if (!riskyPackages.empty()) {
+          result.signals.push_back(buildSignal(
+            SignalId::ANDROID_PACKAGE_MANAGER_RISKY,
+            "risky-package:" + riskyPackages.front(),
+            includeEvidence
+          ));
         }
       } catch (...) {
         // PackageManager probe failed; not a detection.

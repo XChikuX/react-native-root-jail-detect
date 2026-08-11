@@ -16,9 +16,20 @@
 
 #pragma once
 
+#if defined(ROOTJAILDETECT_HOST_TEST)
+namespace margelo::nitro::rootjaildetect {
+  enum class Platform { ANDROID, IOS };
+  enum class Severity { LOW, MEDIUM, HIGH };
+  enum class SignalCategory {
+    FILESYSTEM, SANDBOX, MOUNT, PROCESS, INJECTION, HOOK, PROPERTY,
+    PACKAGE, SIGNATURE, DEBUGGER,
+  };
+}
+#else
 #include "Platform.hpp"
 #include "Severity.hpp"
 #include "SignalCategory.hpp"
+#endif
 
 #include <cstddef>
 #include <optional>
@@ -155,6 +166,58 @@ namespace margelo::nitro::rootjaildetect {
     // ---- Android: package enumeration ----
     /// Root package detected via PackageManager enumeration.
     inline constexpr std::string_view ANDROID_PACKAGE_MANAGER_ROOT = "android.package_manager.root";
+    /// A Magisk module directory was readable and contained module metadata.
+    inline constexpr std::string_view ANDROID_MODULES_MAGISK = "android.modules.magisk";
+    /// A hiding-oriented module was found in the readable module tree.
+    inline constexpr std::string_view ANDROID_MODULES_HIDING = "android.modules.hiding";
+    /// A spoofing/integrity-oriented module was found in the readable module tree.
+    inline constexpr std::string_view ANDROID_MODULES_SPOOFING = "android.modules.spoofing";
+    /// A Magisk persistence script was found below `/system/addon.d`.
+    inline constexpr std::string_view ANDROID_ADDON_D_MAGISK = "android.addon_d.magisk";
+    /// The conventional Android recovery installation script is present.
+    inline constexpr std::string_view ANDROID_INSTALL_RECOVERY = "android.install_recovery";
+    /// The app can write the system hosts file.
+    inline constexpr std::string_view ANDROID_HOSTS_WRITABLE = "android.hosts.writable";
+    /// A custom ROM marker was found in Android properties.
+    inline constexpr std::string_view ANDROID_CUSTOM_ROM = "android.custom_rom";
+    /// LineageOS markers were found in Android properties.
+    inline constexpr std::string_view ANDROID_LINEAGE = "android.lineage";
+    /// An LSPosed cache or module marker is accessible.
+    inline constexpr std::string_view ANDROID_LSPOSED_CACHE = "android.lsposed.cache";
+    /// Multiple executable anonymous mappings form a low-confidence injection candidate.
+    inline constexpr std::string_view ANDROID_MAPS_ANON_INJECTION = "android.maps.anon_injection";
+    /// Android property values disagree in a debuggable/build-type combination.
+    inline constexpr std::string_view ANDROID_PROPS_INCONSISTENT_DEBUGGABLE = "android.props.inconsistent_debuggable";
+    /// Verified boot properties disagree.
+    inline constexpr std::string_view ANDROID_PROPS_INCONSISTENT_VERIFIEDBOOT = "android.props.inconsistent_verifiedboot";
+    /// Fingerprint and build tags/type disagree.
+    inline constexpr std::string_view ANDROID_PROPS_INCONSISTENT_FINGERPRINT = "android.props.inconsistent_fingerprint";
+    /// A Magisk-specific property leaked through property hiding.
+    inline constexpr std::string_view ANDROID_MAGISK_DISABLE_PROP = "android.magisk.disable_prop";
+    /// A known hiding package was found via PackageManager.
+    inline constexpr std::string_view ANDROID_PACKAGE_MANAGER_HMA = "android.package_manager.hma";
+    /// A risky, non-root package was found via PackageManager.
+    inline constexpr std::string_view ANDROID_PACKAGE_MANAGER_RISKY = "android.package_manager.risky";
+    /// The module-tree probe could not be completed or was not readable.
+    inline constexpr std::string_view ANDROID_CHECK_MODULES = "android.check.modules";
+    /// Candidate official Magisk Zygisk marker.
+    inline constexpr std::string_view ANDROID_ZYGISK_VARIANT_OFFICIAL = "android.zygisk.variant.official";
+    /// Candidate Zygisk Assistant marker.
+    inline constexpr std::string_view ANDROID_ZYGISK_VARIANT_ASSISTANT = "android.zygisk.variant.assistant";
+    /// Candidate Zygisk Next marker.
+    inline constexpr std::string_view ANDROID_ZYGISK_VARIANT_NEXT = "android.zygisk.variant.next";
+    /// Candidate ReZygisk marker.
+    inline constexpr std::string_view ANDROID_ZYGISK_VARIANT_REZYGISK = "android.zygisk.variant.rezygisk";
+    /// A write to a normally immutable system directory succeeded.
+    inline constexpr std::string_view ANDROID_SANDBOX_WRITE_SYSTEM_DIR = "android.sandbox.write.system_dir";
+    /// `which su` returned an executable path.
+    inline constexpr std::string_view ANDROID_CMDLINE_SU_EXEC = "android.cmdline.su_exec";
+    /// `which magisk` returned an executable path.
+    inline constexpr std::string_view ANDROID_CMDLINE_MAGISK_EXEC = "android.cmdline.magisk_exec";
+    /// The process PATH contains a candidate Magisk-injected directory.
+    inline constexpr std::string_view ANDROID_ENV_PATH_MAGISK = "android.env.path_magisk";
+    /// Mount metadata contains a conservative multi-layer root overlay candidate.
+    inline constexpr std::string_view ANDROID_MOUNT_MAGISK_CHAIN = "android.mount.magisk_chain";
   } // namespace SignalId
 
   // Basic compile-time string obfuscation for sensitive literals.

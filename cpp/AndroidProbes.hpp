@@ -20,9 +20,17 @@
 
 #include "ProcParsers.hpp"
 
+#include <chrono>
 #include <vector>
 
 namespace margelo::nitro::rootjaildetect {
+
+  struct ModuleProbeResult final {
+    std::vector<ProcFinding> findings;
+    /// False means the directory could not be inspected. It must not be
+    /// interpreted as an empty or clean module tree.
+    bool available = false;
+  };
 
   /// Probe well-known root-manager data/application directories and conventional
   /// `su` binary locations. Multiple paths may exist; each distinct signal id is
@@ -43,5 +51,36 @@ namespace margelo::nitro::rootjaildetect {
 ///
 /// Returns one `ProcFinding` per signal that fired.
   std::vector<ProcFinding> probeBuildProperties() noexcept;
+
+  /// Extended property probe including Magisk leaks and consistency checks.
+  std::vector<ProcFinding> probeSystemAttributes() noexcept;
+
+  /// Enumerate readable Magisk module manifests. The result distinguishes an
+  /// unreadable directory from a readable empty directory.
+  ModuleProbeResult probeMagiskModules() noexcept;
+  ModuleProbeResult probeMagiskModules(
+    std::chrono::steady_clock::time_point deadline
+  ) noexcept;
+
+  /// Probe persistence markers associated with Magisk's addon.d integration.
+  std::vector<ProcFinding> probeAddonD() noexcept;
+
+  /// Probe the weaker stock-compatible recovery installation marker.
+  std::vector<ProcFinding> probeInstallRecovery() noexcept;
+
+  /// Probe hosts writability only; ordinary ad-blocking entries are ignored.
+  std::vector<ProcFinding> probeHostsFile() noexcept;
+
+  /// Probe custom-ROM and LineageOS property markers.
+  std::vector<ProcFinding> probeCustomRom() noexcept;
+
+  /// Probe LSPosed cache/module markers that are accessible to the app UID.
+  std::vector<ProcFinding> probeLspdCache() noexcept;
+
+  /// Attempt a short write/remove probe in immutable Android system locations.
+  std::vector<ProcFinding> probeSystemDirectoryWrite() noexcept;
+
+  /// Probe static `which` commands and the process PATH for candidate markers.
+  std::vector<ProcFinding> probeEnvironmentAndCommands() noexcept;
 
 } // namespace margelo::nitro::rootjaildetect

@@ -172,7 +172,7 @@ configure({
   // Lower → stricter (more devices flagged); higher → looser.
   minScore: 50,
 
-  // Total wall-clock budget per pass in ms (default 400).
+  // Total wall-clock budget per pass in ms (default 600).
   // Overrun checks return `unavailable` signals and `partial: true`.
   timeoutMs: 600,
 
@@ -334,7 +334,7 @@ async function fetchSessionToken() {
 
 ## API Summary
 
-- **`checkDetailed(): Promise<CompromiseAssessment>`** — Runs all enabled checks within a timeout budget (default `400ms`). Overrun checks return `unavailable: true` with `partial: true` rather than throwing.
+- **`checkDetailed(): Promise<CompromiseAssessment>`** — Runs all enabled checks within a timeout budget (default `600ms`). Overrun checks return `unavailable: true` with `partial: true` rather than throwing.
 - **`assessRisk(): Promise<CompromiseAssessment>`** — Alias for `checkDetailed()`; prefer whichever name reads better in your codebase.
 - **`configure(options: RootJailDetectOptions): void`** — Configure `minScore` (default `40`), `timeoutMs`, `includeEvidence`, `treatDebuggerAsCompromise`, and iOS `urlSchemes`.
 - **`isDeviceCompromised(): Promise<boolean>`** — Returns `true` if `score >= minScore`. Rethrows native errors.
@@ -394,7 +394,7 @@ type SignalCategory =
 ```ts
 interface RootJailDetectOptions {
   minScore?: number;                 // default 40 — `compromised` becomes true at or above this
-  timeoutMs?: number;                // default 400 — total wall-clock budget per pass
+  timeoutMs?: number;                // default 600 — total wall-clock budget per pass
   includeEvidence?: boolean;         // default false — see "Evidence redaction" below
   treatDebuggerAsCompromise?: boolean; // default false
   enablePlayIntegrity?: boolean;     // default false — server-attested; not yet wired
@@ -460,8 +460,33 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | low | `android.build.adb_root` | 5 | `service.adb.root` set (dev build or Shamiko) |
 | low | `android.build.ro_secure_zero` | 5 | `ro.secure` is `0` (dev build or Shamiko) |
 | low | `android.mount.overlay` | 10 | Hidden mount overlay in app namespace |
-| high | `android.sandbox.write` | 30 | Sandbox write to a system directory succeeded |
+| high | `android.sandbox.write` | 30 | Sandbox write to `/data/local/tmp` succeeded (weak corroboration) |
 | high | `android.package_manager.root` | 25 | Known root-management package installed (Magisk, SuperSU, KingRoot, etc.) |
+| medium | `android.package_manager.hma` | 15 | Hiding or hooking-related package visible to PackageManager |
+| low | `android.package_manager.risky` | 5 | Risky patching or piracy-related package (informational) |
+| low | `android.modules.magisk` | 10 | Readable Magisk module tree with module metadata (candidate corroboration) |
+| low | `android.modules.hiding` | 10 | Hiding-oriented module manifest found (candidate corroboration) |
+| low | `android.modules.spoofing` | 10 | Integrity/property-spoofing module manifest found (candidate corroboration) |
+| medium | `android.addon_d.magisk` | 20 | Magisk persistence script under `/system/addon.d` |
+| low | `android.install_recovery` | 5 | Conventional install-recovery script present (weak, stock-compatible marker) |
+| low | `android.hosts.writable` | 5 | System hosts file is writable by the app process |
+| low | `android.custom_rom` | 10 | Custom-ROM property marker |
+| low | `android.lineage` | 10 | LineageOS property marker |
+| low | `android.lsposed.cache` | 10 | Accessible LSPosed cache/module marker (candidate corroboration) |
+| low | `android.maps.anon_injection` | 10 | Cluster of executable anonymous mappings (hypothesis, fixture-gated) |
+| low | `android.props.inconsistent_debuggable` | 5 | Debuggable/build-type or secure-property inconsistency (hypothesis) |
+| low | `android.props.inconsistent_verifiedboot` | 5 | Verified-boot and vbmeta state inconsistency (hypothesis) |
+| low | `android.props.inconsistent_fingerprint` | 5 | Fingerprint/build tags/type inconsistency (hypothesis) |
+| low | `android.magisk.disable_prop` | 10 | Magisk-specific property visible (corroboration) |
+| low | `android.zygisk.variant.official` | 5 | Candidate official Zygisk property marker |
+| low | `android.zygisk.variant.assistant` | 5 | Candidate Zygisk Assistant property marker |
+| low | `android.zygisk.variant.next` | 5 | Candidate Zygisk Next property marker |
+| low | `android.zygisk.variant.rezygisk` | 5 | Candidate ReZygisk property marker |
+| high | `android.sandbox.write.system_dir` | 30 | Write to an immutable system directory succeeded |
+| low | `android.cmdline.su_exec` | 10 | `which su` returned a path |
+| low | `android.cmdline.magisk_exec` | 10 | `which magisk` returned a path |
+| low | `android.env.path_magisk` | 5 | Process PATH contains a candidate injected directory |
+| low | `android.mount.magisk_chain` | 5 | Layered suspicious mount candidate (hypothesis) |
 | informational | `android.debugger.tracerpid` | 0 | `TracerPid` non-zero (diagnostic) |
 | high | `ios.dyld.hook` | 30 | Suspicious injection framework loaded (Frida, MobileSubstrate, Substitute, libhooker, ellekit, rosalie, renamed gadgets) |
 | high | `ios.network.frida` | 30 | Frida server responding on loopback 27042 |
@@ -477,7 +502,9 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | informational | `ios.debugger.sysctl` | 0 | `sysctl` reports P_TRACED (diagnostic) |
 | informational | `*.check.*` | 0 | Check timed out / unavailable (not compromise) |
 
-Signal ids are part of the public contract — they are never renamed or reused for a different meaning once published. Tuning a weight or severity is allowed; repurposing an id is a breaking change.
+Signal ids are part of the public contract — they are never renamed or reused for a different meaning once published. Tuning a weight or severity is allowed; repurposing an id is a breaking change. The added Android module, anonymous-map, property-consistency, and Zygisk-variant checks are intentionally low-weight hypotheses until clean-device fixtures establish their false-positive profile.
+
+The Android PackageManager lists are subject to Android package visibility and to hiding tools such as Hide My Applist. A package that is not returned is not proof that it is absent. Similarly, `/data/adb/modules` is commonly unreadable to ordinary app UIDs; that state is reported as unavailable rather than clean. The custom-ROM and LineageOS signals identify build provenance and are not, by themselves, proof of root.
 
 ---
 
@@ -494,9 +521,9 @@ Signal ids are part of the public contract — they are never renamed or reused 
 
 ## Roadmap
 
-The scored baseline (Android + iOS Phase 1, rootless jailbreaks, renamed instrumentation, loopback TCP probes, expanded Android properties, iOS URL schemes, and read-deadline hardening) is **shipped**. Remaining work is optional / future:
+The scored baseline plus the additive Android static/runtime probes described above is **shipped**. Remaining work is optional / future:
 
-- **Native C++ unit tests in CI** — host-side fixture tests for the pure parsers (`ProcParsers`, `Scoring`, `SignalCatalog`) and the `TcpProbe` connect state machine. Jest covers the TypeScript wrapper layer today.
+- **Native C++ unit tests in CI** — the local `bun run native-test` command covers pure parser fixtures; CI integration for the full native test matrix remains future work. Jest covers the TypeScript wrapper layer today.
 - **OEM / benign allowlist** — small, documented table to suppress specific low-severity `test-keys` / SELinux signals on legitimate preview/OEM builds. High-severity memory/mount signals are never allowlisted.
 - **Mount-namespace reshape** — the `android.mount.overlay` namespace-only check is effectively dead code today because `/proc/1/mountinfo` is unreadable by untrusted apps on stock Android (see comment in `cpp/ProcParsers.cpp`). A future reshape would use `statx(2)` with `STATX_ATTR_MOUNT_ROOT` and self-namespace path/content diffs.
 - **Play Integrity / App Attest** — optional client token acquisition behind `enablePlayIntegrity`, paired with a server verifier (see "Recommended pattern: pair with backend attestation"). This is server-side attestation work, not local detection.

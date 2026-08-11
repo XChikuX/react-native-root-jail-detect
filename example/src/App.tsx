@@ -181,11 +181,46 @@ function App() {
                   <Text style={styles.warningTitle}>Signals</Text>
                   {detailed.signals.map((signal, index) => (
                     <Text key={index} style={styles.warningText}>
-                      - {signal.id} ({signal.severity}, {signal.score})
+                      - {signal.id} [{signal.category}] ({signal.severity},{' '}
+                      {signal.score})
+                      {signal.unavailable ? ' unavailable' : ''}
                     </Text>
                   ))}
                 </View>
               )}
+              {detailed &&
+                detailed.signals.some(
+                  (signal) =>
+                    signal.id === 'android.modules.magisk' ||
+                    signal.id === 'android.modules.hiding' ||
+                    signal.id === 'android.modules.spoofing'
+                ) && (
+                  <View style={styles.infoBox}>
+                    <Text style={styles.infoTitle}>Module Tree</Text>
+                    <Text style={styles.infoText}>
+                      The module directory was readable. Enable evidence in{' '}
+                      <Text style={styles.codeText}>configure()</Text> to show
+                      redacted module details.
+                    </Text>
+                  </View>
+                )}
+              {detailed &&
+                detailed.signals.some((signal) =>
+                  signal.id.startsWith('android.props.inconsistent_')
+                ) && (
+                  <View style={styles.infoBox}>
+                    <Text style={styles.infoTitle}>Property Consistency</Text>
+                    {detailed.signals
+                      .filter((signal) =>
+                        signal.id.startsWith('android.props.inconsistent_')
+                      )
+                      .map((signal) => (
+                        <Text key={signal.id} style={styles.infoText}>
+                          {signal.id}: {signal.evidence ?? 'candidate mismatch detected'}
+                        </Text>
+                      ))}
+                  </View>
+                )}
             </View>
 
             <TouchableOpacity
@@ -312,6 +347,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#856404',
     lineHeight: 20,
+  },
+  infoBox: {
+    backgroundColor: '#e8f4ff',
+    borderLeftWidth: 4,
+    borderLeftColor: '#007AFF',
+    padding: 16,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#075985',
+    marginBottom: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#075985',
+    lineHeight: 20,
+  },
+  codeText: {
+    fontFamily: 'monospace',
   },
 });
 

@@ -23,6 +23,8 @@ class HybridPackageManagerProbe final : public HybridPackageManagerProbeSpec {
 
  public:
   std::vector<std::string> getInstalledRootPackages() override;
+  std::vector<std::string> getInstalledHidingPackages() override;
+  std::vector<std::string> getInstalledRiskyPackages() override;
 
  public:
   size_t getExternalMemorySize() noexcept override;

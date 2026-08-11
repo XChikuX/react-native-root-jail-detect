@@ -11,6 +11,7 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <string>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -118,6 +119,80 @@ namespace margelo::nitro::rootjaildetect {
         ++pos;
       }
       return line.substr(pos);
+    }
+
+    struct MapsRegion final {
+      std::string_view permissions;
+      std::string_view pathname;
+    };
+
+    std::optional<MapsRegion> parseMapsRegion(std::string_view line) noexcept {
+      size_t starts[6] = {};
+      size_t ends[6] = {};
+      size_t field = 0;
+      size_t pos = 0;
+      while (field < 6) {
+        while (pos < line.size() && std::isspace(static_cast<unsigned char>(line[pos]))) {
+          ++pos;
+        }
+        if (pos >= line.size()) {
+          break;
+        }
+        starts[field] = pos;
+        while (pos < line.size() && !std::isspace(static_cast<unsigned char>(line[pos]))) {
+          ++pos;
+        }
+        ends[field] = pos;
+        ++field;
+      }
+      if (field < 5) {
+        return std::nullopt;
+      }
+      size_t pathnameStart = ends[4];
+      while (pathnameStart < line.size() &&
+             std::isspace(static_cast<unsigned char>(line[pathnameStart]))) {
+        ++pathnameStart;
+      }
+      return MapsRegion{
+        line.substr(starts[1], ends[1] - starts[1]),
+        line.substr(pathnameStart),
+      };
+    }
+
+    std::string trim(std::string_view value) {
+      size_t begin = 0;
+      while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin]))) {
+        ++begin;
+      }
+      size_t end = value.size();
+      while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+      }
+      return std::string(value.substr(begin, end - begin));
+    }
+
+    void parseModuleDocument(std::string_view document, std::vector<MagiskModule>& modules) {
+      MagiskModule module;
+      size_t lineStart = 0;
+      for (size_t i = 0; i <= document.size(); ++i) {
+        if (i != document.size() && document[i] != '\n') {
+          continue;
+        }
+        std::string_view line = document.substr(lineStart, i - lineStart);
+        const size_t separator = line.find('=');
+        if (separator != std::string_view::npos) {
+          const std::string key = trim(line.substr(0, separator));
+          const std::string value = trim(line.substr(separator + 1));
+          if (key == "id") module.id = value;
+          else if (key == "name") module.name = value;
+          else if (key == "version") module.version = value;
+          else if (key == "author") module.author = value;
+        }
+        lineStart = i + 1;
+      }
+      if (!module.id.empty() || !module.name.empty()) {
+        modules.push_back(std::move(module));
+      }
     }
 
     void recordOnce(std::vector<ProcFinding>& out, std::vector<std::string_view>& seen,
@@ -230,6 +305,111 @@ namespace margelo::nitro::rootjaildetect {
     return findings;
   }
 
+  std::vector<ProcFinding> parseMapsForAnonymousInjection(std::string_view mapsContent) noexcept {
+    std::vector<ProcFinding> findings;
+    size_t executableAnonymousCount = 0;
+    size_t lineStart = 0;
+    for (size_t i = 0; i <= mapsContent.size(); ++i) {
+      if (i != mapsContent.size() && mapsContent[i] != '\n') {
+        continue;
+      }
+      const std::string_view line = mapsContent.substr(lineStart, i - lineStart);
+      if (const auto region = parseMapsRegion(line)) {
+        const bool executable = region->permissions.find('x') != std::string_view::npos;
+        const bool anonymous = region->pathname.empty() || region->pathname.rfind("[anon:", 0) == 0;
+        if (executable && anonymous) {
+          ++executableAnonymousCount;
+        }
+      }
+      lineStart = i + 1;
+    }
+    // ART/JIT commonly exposes one executable anonymous VMA. Require a cluster
+    // so this remains corroboration rather than a standalone compromise proof.
+    if (executableAnonymousCount >= 2) {
+      findings.push_back(ProcFinding{
+        SignalId::ANDROID_MAPS_ANON_INJECTION,
+        "executable-anonymous-mappings=" + std::to_string(executableAnonymousCount),
+      });
+    }
+    return findings;
+  }
+
+  std::vector<ProcFinding> scanMapsForAnonymousInjection(std::string_view mapsContent) noexcept {
+    return parseMapsForAnonymousInjection(mapsContent);
+  }
+
+  std::vector<MagiskModule> parseMagiskModulesProps(std::string_view propsContent) noexcept {
+    std::vector<MagiskModule> modules;
+    size_t documentStart = 0;
+    for (size_t i = 0; i <= propsContent.size(); ++i) {
+      const bool boundary = i == propsContent.size() ||
+        (propsContent[i] == '\n' && i + 1 < propsContent.size() && propsContent[i + 1] == '\n');
+      if (boundary) {
+        parseModuleDocument(propsContent.substr(documentStart, i - documentStart), modules);
+        documentStart = i + 2;
+        if (i == propsContent.size()) {
+          break;
+        }
+      }
+    }
+    return modules;
+  }
+
+  std::vector<ProcFinding> parseSystemAttributeInconsistencies(
+    const SystemAttributes& attributes
+  ) noexcept {
+    std::vector<ProcFinding> findings;
+    std::vector<std::string_view> seen;
+    auto add = [&](std::string_view id, std::string evidence) {
+      recordOnce(findings, seen, id, std::move(evidence));
+    };
+
+    if (attributes.debuggable == "0" && attributes.buildType == "userdebug") {
+      add(SignalId::ANDROID_PROPS_INCONSISTENT_DEBUGGABLE, "ro.debuggable=0/build_type=userdebug");
+    }
+    if (attributes.debuggable == "1" && attributes.secure == "1") {
+      add(SignalId::ANDROID_PROPS_INCONSISTENT_DEBUGGABLE, "ro.debuggable=1/ro.secure=1");
+    }
+    if ((attributes.verifiedBootState == "green" || attributes.verifiedBootState == "GREEN") &&
+        (attributes.vbmetaDeviceState == "unlocked" || attributes.vbmetaDeviceState == "UNLOCKED")) {
+      add(SignalId::ANDROID_PROPS_INCONSISTENT_VERIFIEDBOOT, "verifiedboot=green/vbmeta=unlocked");
+    }
+    if (containsCI(attributes.fingerprint, "release-keys") &&
+        containsCI(attributes.buildTags, "test-keys")) {
+      add(SignalId::ANDROID_PROPS_INCONSISTENT_FINGERPRINT, "fingerprint=release-keys/tags=test-keys");
+    }
+    if (containsCI(attributes.fingerprint, "/user/") && attributes.buildType == "userdebug") {
+      add(SignalId::ANDROID_PROPS_INCONSISTENT_FINGERPRINT, "fingerprint=user/build_type=userdebug");
+    }
+    if (!attributes.magiskHide.empty() || !attributes.magiskDisable.empty() ||
+        !attributes.magiskDaemon.empty() || !attributes.magiskPfs.empty()) {
+      add(SignalId::ANDROID_MAGISK_DISABLE_PROP, "magisk-specific-property-present");
+    }
+    return findings;
+  }
+
+  std::vector<ProcFinding> parseSystemAttributeInconsistencies(
+    const std::map<std::string, std::string>& properties
+  ) noexcept {
+    const auto value = [&properties](std::string_view key) -> std::string {
+      const auto found = properties.find(std::string(key));
+      return found == properties.end() ? std::string() : found->second;
+    };
+    return parseSystemAttributeInconsistencies(SystemAttributes{
+      value("ro.debuggable"),
+      value("ro.build.type"),
+      value("ro.secure"),
+      value("ro.boot.verifiedbootstate"),
+      value("ro.boot.vbmeta.device_state"),
+      value("ro.build.fingerprint"),
+      value("ro.build.tags"),
+      value("persist.magisk.hide"),
+      value("ro.magisk.disable"),
+      value("init.svc.magisk_daemon"),
+      value("init.svc.magisk_pfs"),
+    });
+  }
+
   std::vector<ProcFinding> scanMountsForRootArtifacts(
     std::string_view mountinfoContent,
     std::string_view mountsContent
@@ -243,6 +423,29 @@ namespace margelo::nitro::rootjaildetect {
     scanLines(mountsContent, K_MOUNT_PATTERNS, sizeof(K_MOUNT_PATTERNS) / sizeof(K_MOUNT_PATTERNS[0]),
               findings, seen, /*usePathnameOnly=*/false);
     return findings;
+  }
+
+  std::vector<ProcFinding> scanMountsForMagiskChain(std::string_view mountinfoContent) noexcept {
+    size_t suspiciousLayers = 0;
+    size_t lineStart = 0;
+    for (size_t i = 0; i <= mountinfoContent.size(); ++i) {
+      if (i != mountinfoContent.size() && mountinfoContent[i] != '\n') {
+        continue;
+      }
+      const std::string_view line = mountinfoContent.substr(lineStart, i - lineStart);
+      if (containsCI(line, "magisk") || containsCI(line, "/data/adb") ||
+          containsCI(line, "overlay") || containsCI(line, "/debug_ramdisk")) {
+        ++suspiciousLayers;
+      }
+      lineStart = i + 1;
+    }
+    if (suspiciousLayers >= 3) {
+      return {ProcFinding{
+        SignalId::ANDROID_MOUNT_MAGISK_CHAIN,
+        "layered-suspicious-mounts=" + std::to_string(suspiciousLayers),
+      }};
+    }
+    return {};
   }
 
   std::vector<ProcFinding> scanNamespaceOnlyMountArtifacts(

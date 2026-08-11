@@ -16,6 +16,14 @@ std::vector<std::string> HybridPackageManagerProbe::getInstalledRootPackages() {
   return {};
 }
 
+std::vector<std::string> HybridPackageManagerProbe::getInstalledHidingPackages() {
+  return {};
+}
+
+std::vector<std::string> HybridPackageManagerProbe::getInstalledRiskyPackages() {
+  return {};
+}
+
 size_t HybridPackageManagerProbe::getExternalMemorySize() noexcept {
   return sizeof(*this);
 }

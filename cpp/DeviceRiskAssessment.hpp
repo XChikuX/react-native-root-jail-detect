@@ -18,7 +18,7 @@ namespace margelo::nitro::rootjaildetect {
 
   struct ResolvedRootJailDetectOptions final {
     double minScore = 40.0;
-    double timeoutMs = 400.0;
+    double timeoutMs = 600.0;
     bool includeEvidence = false;
     bool treatDebuggerAsCompromise = false;
     bool enablePlayIntegrity = false;

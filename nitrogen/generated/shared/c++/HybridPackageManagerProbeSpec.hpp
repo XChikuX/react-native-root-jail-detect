@@ -50,6 +50,8 @@ namespace margelo::nitro::rootjaildetect {
     public:
       // Methods
       virtual std::vector<std::string> getInstalledRootPackages() = 0;
+      virtual std::vector<std::string> getInstalledHidingPackages() = 0;
+      virtual std::vector<std::string> getInstalledRiskyPackages() = 0;
 
     protected:
       // Hybrid Setup

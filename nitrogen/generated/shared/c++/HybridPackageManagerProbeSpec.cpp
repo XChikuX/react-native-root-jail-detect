@@ -15,6 +15,8 @@ namespace margelo::nitro::rootjaildetect {
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridMethod("getInstalledRootPackages", &HybridPackageManagerProbeSpec::getInstalledRootPackages);
+      prototype.registerHybridMethod("getInstalledHidingPackages", &HybridPackageManagerProbeSpec::getInstalledHidingPackages);
+      prototype.registerHybridMethod("getInstalledRiskyPackages", &HybridPackageManagerProbeSpec::getInstalledRiskyPackages);
     });
   }
 

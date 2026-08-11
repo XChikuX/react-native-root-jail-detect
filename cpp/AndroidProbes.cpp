@@ -6,14 +6,20 @@
 #include "SignalCatalog.hpp"
 
 #if defined(__ANDROID__)
+#include <dirent.h>
 #include <fcntl.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/system_properties.h>
 #include <unistd.h>
 #endif
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <string>
 
 namespace margelo::nitro::rootjaildetect {
@@ -114,6 +120,30 @@ namespace margelo::nitro::rootjaildetect {
       }
       return false;
     }
+
+    std::string lower(std::string_view value) {
+      std::string result(value);
+      for (char& c : result) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+      }
+      return result;
+    }
+
+    bool hasSuffixCI(std::string_view value, std::string_view suffix) noexcept {
+      return value.size() >= suffix.size() &&
+        containsCI(value.substr(value.size() - suffix.size()), suffix);
+    }
+
+    bool commandReturnsPath(const char* command) noexcept {
+      FILE* pipe = ::popen(command, "r");
+      if (pipe == nullptr) {
+        return false;
+      }
+      char buffer[256] = {};
+      const bool hasOutput = ::fgets(buffer, sizeof(buffer), pipe) != nullptr;
+      const int status = ::pclose(pipe);
+      return hasOutput && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    }
 #endif // defined(__ANDROID__)
 
     void recordOnce(std::vector<ProcFinding>& out, std::vector<std::string_view>& seen,
@@ -150,7 +180,7 @@ namespace margelo::nitro::rootjaildetect {
     return findings;
   }
 
-  std::vector<ProcFinding> probeBuildProperties() noexcept {
+  std::vector<ProcFinding> probeSystemAttributes() noexcept {
     std::vector<ProcFinding> findings;
     std::vector<std::string_view> seen;
 #if defined(__ANDROID__)
@@ -202,6 +232,285 @@ namespace margelo::nitro::rootjaildetect {
     if (!roSecure.empty() && roSecure == "0") {
       recordOnce(findings, seen, SignalId::ANDROID_RO_SECURE_ZERO,
                  "ro.secure=0");
+    }
+
+    SystemAttributes attributes{
+      debuggable,
+      readProperty("ro.build.type"),
+      roSecure,
+      bootState,
+      readProperty("ro.boot.vbmeta.device_state"),
+      fingerprint,
+      buildTags,
+      readProperty("persist.magisk.hide"),
+      readProperty("ro.magisk.disable"),
+      readProperty("init.svc.magisk_daemon"),
+      readProperty("init.svc.magisk_pfs"),
+    };
+    for (const ProcFinding& finding : parseSystemAttributeInconsistencies(attributes)) {
+      recordOnce(findings, seen, finding.signalId, finding.evidence);
+    }
+
+    const std::string zygisk = readProperty("ro.zygisk.version");
+    const std::string assistant = readProperty("ro.zygisk.assistant.version");
+    const std::string assistantEnabled = readProperty("persist.zygisk.assistant");
+    const std::string next = readProperty("ro.zygisk.next.version");
+    const std::string rezygisk = readProperty("ro.rezygisk.version");
+    if (!zygisk.empty()) {
+      recordOnce(findings, seen, SignalId::ANDROID_ZYGISK_VARIANT_OFFICIAL,
+                 "ro.zygisk.version-present");
+    }
+    if (!assistant.empty() || !assistantEnabled.empty()) {
+      recordOnce(findings, seen, SignalId::ANDROID_ZYGISK_VARIANT_ASSISTANT,
+                 "zygisk-assistant-property-present");
+    }
+    if (!next.empty()) {
+      recordOnce(findings, seen, SignalId::ANDROID_ZYGISK_VARIANT_NEXT,
+                 "ro.zygisk.next.version-present");
+    }
+    if (!rezygisk.empty()) {
+      recordOnce(findings, seen, SignalId::ANDROID_ZYGISK_VARIANT_REZYGISK,
+                 "ro.rezygisk.version-present");
+    }
+#endif
+    return findings;
+  }
+
+  std::vector<ProcFinding> probeBuildProperties() noexcept {
+    return probeSystemAttributes();
+  }
+
+  ModuleProbeResult probeMagiskModules(
+    std::chrono::steady_clock::time_point deadline
+  ) noexcept {
+    ModuleProbeResult result;
+#if defined(__ANDROID__)
+    DIR* directory = ::opendir("/data/adb/modules");
+    if (directory == nullptr) {
+      return result;
+    }
+    result.available = true;
+    std::vector<std::string_view> seen;
+    size_t moduleCount = 0;
+    constexpr size_t kMaxModules = 128;
+    while (moduleCount < kMaxModules) {
+      if (std::chrono::steady_clock::now() >= deadline) {
+        break;
+      }
+      dirent* entry = ::readdir(directory);
+      if (entry == nullptr) {
+        break;
+      }
+      const std::string_view name(entry->d_name);
+      if (name == "." || name == "..") {
+        continue;
+      }
+      const std::string directoryPath = "/data/adb/modules/" + std::string(name);
+      struct stat info {};
+      if (::stat(directoryPath.c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) {
+        continue;
+      }
+      ++moduleCount;
+      const std::string propPath = directoryPath + "/module.prop";
+      const auto props = readFileIfExists(propPath, deadline, 16 * 1024);
+      if (!props) {
+        continue;
+      }
+      const std::vector<MagiskModule> modules = parseMagiskModulesProps(*props);
+      const std::string identity = modules.empty() ? std::string(name) :
+        modules.front().id + " " + modules.front().name;
+      const std::string normalized = lower(identity);
+      recordOnce(result.findings, seen, SignalId::ANDROID_MODULES_MAGISK,
+                 "readable-magisk-module-tree");
+      if (containsCI(normalized, "zygisk-assistant") || containsCI(normalized, "shamiko") ||
+          containsCI(normalized, "magiskhide") || containsCI(normalized, "hide-my-applist")) {
+        recordOnce(result.findings, seen, SignalId::ANDROID_MODULES_HIDING,
+                   "hiding-module-manifest-present");
+      }
+      if (containsCI(normalized, "playintegrityfix") || containsCI(normalized, "play-integrity-fix") ||
+          containsCI(normalized, "tricky_store") || containsCI(normalized, "trickystore")) {
+        recordOnce(result.findings, seen, SignalId::ANDROID_MODULES_SPOOFING,
+                   "integrity-module-manifest-present");
+      }
+    }
+    ::closedir(directory);
+#endif
+    return result;
+  }
+
+  ModuleProbeResult probeMagiskModules() noexcept {
+    return probeMagiskModules(std::chrono::steady_clock::time_point::max());
+  }
+
+  std::vector<ProcFinding> probeAddonD() noexcept {
+    std::vector<ProcFinding> findings;
+#if defined(__ANDROID__)
+    bool found = pathExists("/system/addon.d/99-magisk.sh");
+    DIR* directory = ::opendir("/system/addon.d");
+    if (directory != nullptr) {
+      while (dirent* entry = ::readdir(directory)) {
+        const std::string_view name(entry->d_name);
+        if (name != "." && name != ".." && hasSuffixCI(name, ".sh")) {
+          found = true;
+          break;
+        }
+      }
+      ::closedir(directory);
+    }
+    if (found) {
+      findings.push_back(ProcFinding{SignalId::ANDROID_ADDON_D_MAGISK, "addon.d-shell-script-present"});
+    }
+#endif
+    return findings;
+  }
+
+  std::vector<ProcFinding> probeInstallRecovery() noexcept {
+    std::vector<ProcFinding> findings;
+#if defined(__ANDROID__)
+    if (pathExists("/system/bin/install-recovery.sh")) {
+      findings.push_back(ProcFinding{SignalId::ANDROID_INSTALL_RECOVERY, "install-recovery-script-present"});
+    }
+#endif
+    return findings;
+  }
+
+  std::vector<ProcFinding> probeHostsFile() noexcept {
+    std::vector<ProcFinding> findings;
+#if defined(__ANDROID__)
+    if (::access("/system/etc/hosts", W_OK) == 0) {
+      findings.push_back(ProcFinding{SignalId::ANDROID_HOSTS_WRITABLE, "system-hosts-writable"});
+    }
+#endif
+    return findings;
+  }
+
+  std::vector<ProcFinding> probeCustomRom() noexcept {
+    std::vector<ProcFinding> findings;
+#if defined(__ANDROID__)
+    std::vector<std::string_view> seen;
+    const std::string lineageVersion = readProperty("ro.lineage.version");
+    const std::string lineageDisplayVersion = readProperty("ro.lineage.display.version");
+    const std::string lineageLegacy = readProperty("lineage.version");
+    const std::string displayId = readProperty("ro.build.display.id");
+    const std::string crdroid = readProperty("ro.crdroid.version");
+    const std::string evolution = readProperty("ro.evolution.version");
+    const std::string pixel = readProperty("ro.pixelexperience.version");
+    const std::string modVersion = readProperty("ro.modversion");
+    const bool lineage = !lineageVersion.empty() || !lineageDisplayVersion.empty() ||
+      !lineageLegacy.empty() || containsCI(displayId, "lineage_");
+    const bool custom = lineage || !crdroid.empty() || !evolution.empty() ||
+      !pixel.empty() || !modVersion.empty() || containsCI(displayId, "crdroid_") ||
+      containsCI(displayId, "evolutionx_") || containsCI(displayId, "pixel_");
+    if (custom) {
+      recordOnce(findings, seen, SignalId::ANDROID_CUSTOM_ROM, "custom-rom-marker-present");
+    }
+    if (lineage) {
+      recordOnce(findings, seen, SignalId::ANDROID_LINEAGE,
+                 lineageVersion.empty() ? "lineage-marker-present" : "lineage-version-present");
+    }
+#endif
+    return findings;
+  }
+
+  std::vector<ProcFinding> probeLspdCache() noexcept {
+    std::vector<ProcFinding> findings;
+#if defined(__ANDROID__)
+    constexpr std::string_view kMarkers[] = {
+      "/data/adb/lspd",
+      "/data/adb/modules/lsposed",
+      "/data/adb/modules/zygisk-lsposed",
+    };
+    for (const std::string_view marker : kMarkers) {
+      if (pathExists(marker)) {
+        findings.push_back(ProcFinding{SignalId::ANDROID_LSPOSED_CACHE, "lsposed-cache-or-module-present"});
+        break;
+      }
+    }
+    if (findings.empty()) {
+      DIR* users = ::opendir("/data/user/0");
+      if (users != nullptr) {
+        size_t checkedUsers = 0;
+        while (checkedUsers < 64) {
+          dirent* user = ::readdir(users);
+          if (user == nullptr) {
+            break;
+          }
+          const std::string_view userName(user->d_name);
+          if (userName == "." || userName == "..") {
+            continue;
+          }
+          ++checkedUsers;
+          const std::string cachePath = "/data/user/0/" + std::string(userName) + "/cache";
+          DIR* cache = ::opendir(cachePath.c_str());
+          if (cache == nullptr) {
+            continue;
+          }
+          while (dirent* entry = ::readdir(cache)) {
+            const std::string_view cacheName(entry->d_name);
+            if (cacheName.size() >= 4 && cacheName.substr(0, 4) == "lspd") {
+              findings.push_back(ProcFinding{SignalId::ANDROID_LSPOSED_CACHE, "lsposed-cache-marker-present"});
+              break;
+            }
+          }
+          ::closedir(cache);
+          if (!findings.empty()) {
+            break;
+          }
+        }
+        ::closedir(users);
+      }
+    }
+#endif
+    return findings;
+  }
+
+  std::vector<ProcFinding> probeSystemDirectoryWrite() noexcept {
+    std::vector<ProcFinding> findings;
+#if defined(__ANDROID__)
+    constexpr std::string_view kDirectories[] = {
+      "/system/etc/",
+      "/vendor/etc/",
+      "/product/etc/",
+    };
+    const std::string suffix = ".anti_jb_probe_" + std::to_string(static_cast<long long>(::getpid()));
+    for (const std::string_view directory : kDirectories) {
+      const std::string path = std::string(directory) + suffix;
+      std::ofstream file(path, std::ios::out | std::ios::trunc);
+      if (!file.is_open()) {
+        continue;
+      }
+      file << "probe";
+      file.close();
+      ::remove(path.c_str());
+      findings.push_back(ProcFinding{
+        SignalId::ANDROID_SANDBOX_WRITE_SYSTEM_DIR,
+        "system-directory-write-succeeded",
+      });
+      break;
+    }
+#endif
+    return findings;
+  }
+
+  std::vector<ProcFinding> probeEnvironmentAndCommands() noexcept {
+    std::vector<ProcFinding> findings;
+#if defined(__ANDROID__)
+    const char* rawPath = ::getenv("PATH");
+    if (rawPath != nullptr) {
+      const std::string_view path(rawPath);
+      if (containsCI(path, "/data/adb/") || containsCI(path, "/sbin") ||
+          containsCI(path, "/product/bin") || containsCI(path, "/system_ext/bin")) {
+        findings.push_back(ProcFinding{
+          SignalId::ANDROID_ENV_PATH_MAGISK,
+          "candidate-magisk-path-entry",
+        });
+      }
+    }
+    if (commandReturnsPath("which su")) {
+      findings.push_back(ProcFinding{SignalId::ANDROID_CMDLINE_SU_EXEC, "which-su-returned-path"});
+    }
+    if (commandReturnsPath("which magisk")) {
+      findings.push_back(ProcFinding{SignalId::ANDROID_CMDLINE_MAGISK_EXEC, "which-magisk-returned-path"});
     }
 #endif
     return findings;

@@ -4,5 +4,28 @@
     <package android:name="me.weishu.kernelsu" />
     <package android:name="me.bmax.apatch" />
     <package android:name="org.lsposed.manager" />
+    <package android:name="io.github.lsposed.manager" />
+    <package android:name="com.tsng.hidemyapplist" />
+    <package android:name="de.robv.android.xposed.installer" />
+    <package android:name="org.meowcat.edxposed.manager" />
+    <package android:name="com.solohsu.android.edxp.manager" />
+    <package android:name="com.saurik.substrate" />
+    <package android:name="com.zachspong.temprootremovejb" />
+    <package android:name="com.amphoras.hidemyroot" />
+    <package android:name="com.thirdparty.superuser" />
+    <package android:name="com.yellowes.su" />
+    <package android:name="com.zhiqupk.root.global" />
+    <package android:name="com.alephzain.framaroot" />
+    <package android:name="com.kingo.root" />
+    <package android:name="com.smedialink.oneclickroot" />
+    <package android:name="com.koushikdutta.rommanager" />
+    <package android:name="com.dimonvideo.luckypatcher" />
+    <package android:name="com.chelpus.luckypatcher" />
+    <package android:name="com.blackmartalpha" />
+    <package android:name="org.blackmart.market" />
+    <package android:name="com.xmodgame" />
+    <package android:name="com.cih.game_cih" />
+    <package android:name="cc.madkite.freedom" />
+    <package android:name="com.ramdroid.appquarantinepro" />
   </queries>
 </manifest>

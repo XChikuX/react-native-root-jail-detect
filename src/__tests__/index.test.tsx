@@ -275,7 +275,7 @@ describe('@psync/anti-jailbreak wrappers', () => {
       // id for v0.3.0 entries that were missing from the JS-side catalog (the
       // network probes, the dev-build property signals, and the *.check.*
       // availability markers). Lock in human-readable text for every id.
-      const allIds = [
+        const allIds = [
         'android.network.frida',
         'android.network.ssh',
         'android.network.adb',
@@ -288,7 +288,33 @@ describe('@psync/anti-jailbreak wrappers', () => {
         'ios.network.frida',
         'ios.network.ssh',
         'ios.sandbox.write',
-        'ios.check.sandbox',
+          'ios.check.sandbox',
+          'android.maps.anon_injection',
+          'android.package_manager.hma',
+          'android.package_manager.risky',
+          'android.modules.magisk',
+          'android.modules.hiding',
+          'android.modules.spoofing',
+          'android.addon_d.magisk',
+          'android.install_recovery',
+          'android.hosts.writable',
+          'android.custom_rom',
+          'android.lineage',
+          'android.lsposed.cache',
+          'android.props.inconsistent_debuggable',
+          'android.props.inconsistent_verifiedboot',
+          'android.props.inconsistent_fingerprint',
+          'android.magisk.disable_prop',
+          'android.zygisk.variant.official',
+          'android.zygisk.variant.assistant',
+          'android.zygisk.variant.next',
+          'android.zygisk.variant.rezygisk',
+          'android.sandbox.write.system_dir',
+          'android.cmdline.su_exec',
+          'android.cmdline.magisk_exec',
+          'android.env.path_magisk',
+          'android.mount.magisk_chain',
+          'android.check.modules',
       ];
       mockCheckDetailed.mockResolvedValue(
         stubResult({
@@ -333,6 +359,25 @@ describe('@psync/anti-jailbreak wrappers', () => {
       for (const id of newIds) {
         expect(reasons).not.toContain(id);
       }
+    });
+
+    it('maps new Android static signals to human-readable reasons', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [
+            stubSignal('android.maps.anon_injection'),
+            stubSignal('android.package_manager.hma'),
+            stubSignal('android.modules.magisk'),
+            stubSignal('android.addon_d.magisk'),
+          ],
+        })
+      );
+      await expect(getDetectionReasons()).resolves.toEqual([
+        'A cluster of executable anonymous memory mappings was found.',
+        'A hiding or hooking-related package was detected via PackageManager.',
+        'A readable Magisk module tree contains module metadata.',
+        'A Magisk persistence script was found under addon.d.',
+      ]);
     });
   });
 

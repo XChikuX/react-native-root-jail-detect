@@ -24,7 +24,7 @@ export interface RootJailDetectOptions {
    * the budget report an {@linkcode DetectionSignal.unavailable} signal and
    * the result is marked {@linkcode CompromiseAssessment.partial}.
    *
-   * @default 400
+   * @default 600
    */
   timeoutMs?: number;
   /**

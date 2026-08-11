@@ -13,4 +13,10 @@ export interface PackageManagerProbe extends HybridObject<{ ios: 'c++'; android:
    * Returns a list of detected package names.
    */
   getInstalledRootPackages(): string[];
+
+  /** Check for hiding/framework manager packages such as HMA and LSPosed. */
+  getInstalledHidingPackages(): string[];
+
+  /** Check for applications associated with risky patching or piracy tools. */
+  getInstalledRiskyPackages(): string[];
 }

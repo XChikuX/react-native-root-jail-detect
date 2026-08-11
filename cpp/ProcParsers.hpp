@@ -14,6 +14,7 @@
 #pragma once
 
 #include <chrono>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -30,6 +31,30 @@ namespace margelo::nitro::rootjaildetect {
     /// Redacted snippet describing what was observed (e.g. a normalized path or
     /// matched token, never a raw sensitive value).
     std::string evidence;
+  };
+
+  /// Parsed fields from one Magisk-compatible `module.prop` file.
+  struct MagiskModule final {
+    std::string id;
+    std::string name;
+    std::string version;
+    std::string author;
+  };
+
+  /// The property values used by the Android cross-checks. Keeping this value
+  /// type platform-neutral makes the consistency rules fixture-testable.
+  struct SystemAttributes final {
+    std::string debuggable;
+    std::string buildType;
+    std::string secure;
+    std::string verifiedBootState;
+    std::string vbmetaDeviceState;
+    std::string fingerprint;
+    std::string buildTags;
+    std::string magiskHide;
+    std::string magiskDisable;
+    std::string magiskDaemon;
+    std::string magiskPfs;
   };
 
   /// Read an entire file into a string. Returns `std::nullopt` if the file
@@ -52,6 +77,28 @@ namespace margelo::nitro::rootjaildetect {
   /// matched (callers deduplicate further by id during scoring).
   std::vector<ProcFinding> scanMapsForHooks(std::string_view mapsContent) noexcept;
 
+  /// Find a small cluster of executable anonymous mappings. A single anonymous
+  /// executable region is common on ART/JIT devices and is deliberately ignored;
+  /// this low-confidence heuristic requires at least two regions.
+  std::vector<ProcFinding> parseMapsForAnonymousInjection(std::string_view mapsContent) noexcept;
+
+  /// Alias with the scan naming used by the Android orchestrator.
+  std::vector<ProcFinding> scanMapsForAnonymousInjection(std::string_view mapsContent) noexcept;
+
+  /// Parse one or more newline-separated `module.prop` documents. Documents may
+  /// be separated by a blank line, which is convenient for host-side fixtures.
+  std::vector<MagiskModule> parseMagiskModulesProps(std::string_view propsContent) noexcept;
+
+  /// Parse the system-property cross-checks without touching Android APIs.
+  std::vector<ProcFinding> parseSystemAttributeInconsistencies(
+    const SystemAttributes& attributes
+  ) noexcept;
+
+  /// Convenience overload for fixture callers that model properties as a map.
+  std::vector<ProcFinding> parseSystemAttributeInconsistencies(
+    const std::map<std::string, std::string>& properties
+  ) noexcept;
+
   /// Scan `/proc/self/mountinfo` and `/proc/self/mounts` content for Magisk /
   /// KernelSU / APatch overlay artifacts and suspicious bind mounts. Both
   /// inputs are optional (pass empty strings when a source was unavailable).
@@ -59,6 +106,9 @@ namespace margelo::nitro::rootjaildetect {
     std::string_view mountinfoContent,
     std::string_view mountsContent
   ) noexcept;
+
+  /// Find a conservative multi-layer root-overlay candidate in mount metadata.
+  std::vector<ProcFinding> scanMountsForMagiskChain(std::string_view mountinfoContent) noexcept;
 
   /// Find suspicious mount artifacts visible in the app namespace but absent
   /// from the initial namespace. Namespace identity is never a finding by

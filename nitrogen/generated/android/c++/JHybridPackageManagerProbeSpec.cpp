@@ -59,5 +59,33 @@ namespace margelo::nitro::rootjaildetect {
       return __vector;
     }(__result);
   }
+  std::vector<std::string> JHybridPackageManagerProbeSpec::getInstalledHidingPackages() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<jni::JString>>()>("getInstalledHidingPackages");
+    auto __result = method(_javaPart);
+    return [&](auto&& __input) {
+      size_t __size = __input->size();
+      std::vector<std::string> __vector;
+      __vector.reserve(__size);
+      for (size_t __i = 0; __i < __size; __i++) {
+        auto __element = __input->getElement(__i);
+        __vector.push_back(__element->toStdString());
+      }
+      return __vector;
+    }(__result);
+  }
+  std::vector<std::string> JHybridPackageManagerProbeSpec::getInstalledRiskyPackages() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<jni::JString>>()>("getInstalledRiskyPackages");
+    auto __result = method(_javaPart);
+    return [&](auto&& __input) {
+      size_t __size = __input->size();
+      std::vector<std::string> __vector;
+      __vector.reserve(__size);
+      for (size_t __i = 0; __i < __size; __i++) {
+        auto __element = __input->getElement(__i);
+        __vector.push_back(__element->toStdString());
+      }
+      return __vector;
+    }(__result);
+  }
 
 } // namespace margelo::nitro::rootjaildetect

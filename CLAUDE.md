@@ -464,6 +464,29 @@ scoped packages). Native files in `cpp/`, `android/`, `ios/`, and
 field. The `.podspec` at the root is picked up by React Native CocoaPods
 autolinking.
 
+### Release gates (release-it hooks)
+
+`bun run release` runs two native gates via `release-it` hooks before the
+version lands on npm:
+
+1. **`before:bump`** — `bun run release:preflight` (typecheck, lint, jest,
+   package build, host-side native fixture tests) then
+   `bun run release:android` (`./gradlew app:bundleDebug` in `example/android`,
+   single ABI `arm64-v8a`). If either fails, the release aborts **before** any
+   version is bumped or committed.
+2. **`after:bump`** — `bun run release:pods` (`pod install --no-repo-update` in
+   `example/ios`) then `git add example/ios/Podfile.lock`. The podspec reads
+   the version from `package.json` at `pod install` time, so this hook re-runs
+   after the bump so the committed `Podfile.lock` always tracks the **new**
+   released version instead of lagging one release behind. The updated
+   `Podfile.lock` is staged and lands in the release commit. Do **not** move
+   `pod install` to `before:bump` — it would record the *old* version and
+   recreate the drift this gate exists to prevent.
+
+These hooks require the toolchain environment documented in "Native build
+commands" (Android SDK/JDK env vars for `release:android`; `DEVELOPER_DIR`
+for `pod install`), set in the shell that runs `bun run release`.
+
 ## Documentation and contribution requirements
 
 - Keep `README.md` synchronized with exported APIs, defaults, supported modes, setup, and security limitations.

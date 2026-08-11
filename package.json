@@ -162,6 +162,15 @@
       "commitMessage": "chore: release ${version}",
       "tagName": "v${version}"
     },
+    "hooks": {
+      "before:bump": [
+        "bun run release:preflight",
+        "bun run release:android"
+      ],
+      "after:bump": [
+        "bun run release:pods && git add example/ios/Podfile.lock"
+      ]
+    },
     "github": {
       "release": true
     },
@@ -187,6 +196,9 @@
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "prepublishOnly": "bob build",
     "release": "release-it --only-version",
+    "release:preflight": "bun run typecheck && bun run lint && bun run test --maxWorkers=2 && bun run build && bun run native-test",
+    "release:android": "cd example/android && ./gradlew app:bundleDebug --no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a",
+    "release:pods": "cd example/ios && pod install --no-repo-update",
     "native-test": "c++ -std=c++20 -Wall -Wextra -DROOTJAILDETECT_HOST_TEST -Icpp cpp/tests/ProcParsersTests.cpp cpp/ProcParsers.cpp cpp/SignalCatalog.cpp -o /tmp/anti-jailbreak-proc-tests && /tmp/anti-jailbreak-proc-tests",
     "specs": "nitrogen",
     "test": "jest",

@@ -341,6 +341,7 @@ async function fetchSessionToken() {
 - **`isEmulator(): Promise<boolean>`** — Returns `true` if running in an emulator/simulator. Returns `false` on error.
 - **`isDebuggerAttached(): Promise<boolean>`** — Returns `true` if a debugger is attached. Returns `false` on error.
 - **`getDetectionReasons(): Promise<string[]>`** — Returns human-readable reasons for fired signals. Returns `[]` on error.
+- **`setDetectionCallback(cb): void`** — Register a callback invoked after each `checkDetailed()`/`assessRisk()` pass with the `CompromiseAssessment` and `{ platform, timestampMs }` metadata. Pass `undefined` to deregister. Callback exceptions are logged, never thrown.
 - **`startSecurityWatchdog(options): void`** — Periodically runs checks in background. `protectionMode` is `'LOG_ONLY' | 'THROW_EXCEPTION' | 'TERMINATE'`. Note: `THROW_EXCEPTION` is demoted to a logged warning on the background thread (it cannot throw into the JS runtime); `TERMINATE` ends the process. To react in app code, poll `checkDetailed()` / `isDeviceCompromised()` from JS.
 - **`stopSecurityWatchdog(): void`** — Stops the security watchdog thread.
 
@@ -377,13 +378,13 @@ interface DetectionSignal {
 // Source of truth: src/specs/SignalCategory.ts. Closed enum.
 type SignalCategory =
   | 'filesystem'   // root-manager dirs, su binaries, jailbreak artifact paths
-  | 'sandbox'      // TrollStore persistence, URL-scheme canOpenURL hits
+  | 'sandbox'      // TrollStore persistence, URL-scheme canOpenURL hits, sandbox write probes
   | 'mount'        // Magisk overlays, hidden bind-mounts in app namespace
   | 'process'      // cmdline tokens, local sockets, loopback SSH/ADB listeners
   | 'injection'    // Frida/Zygisk/Riru maps artifacts, loopback Frida port
   | 'hook'         // LSPosed/Xposed/MobileSubstrate/Substitute/libhooker/ellekit
   | 'property'     // ro.debuggable, service.adb.root, ro.secure, SELinux state
-  | 'package'      // (reserved) PackageManager enumeration of root-manager apps
+  | 'package'      // PackageManager enumeration of root-manager apps
   | 'signature'    // bootloader unlocked, test-keys, verified boot, emulator
   | 'debugger';    // TracerPid, sysctl P_TRACED, *.check.* availability markers
 ```
@@ -459,6 +460,8 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | low | `android.build.adb_root` | 5 | `service.adb.root` set (dev build or Shamiko) |
 | low | `android.build.ro_secure_zero` | 5 | `ro.secure` is `0` (dev build or Shamiko) |
 | low | `android.mount.overlay` | 10 | Hidden mount overlay in app namespace |
+| high | `android.sandbox.write` | 30 | Sandbox write to a system directory succeeded |
+| high | `android.package_manager.root` | 25 | Known root-management package installed (Magisk, SuperSU, KingRoot, etc.) |
 | informational | `android.debugger.tracerpid` | 0 | `TracerPid` non-zero (diagnostic) |
 | high | `ios.dyld.hook` | 30 | Suspicious injection framework loaded (Frida, MobileSubstrate, Substitute, libhooker, ellekit, rosalie, renamed gadgets) |
 | high | `ios.network.frida` | 30 | Frida server responding on loopback 27042 |
@@ -469,6 +472,7 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | medium | `ios.jailbreak.palera1n` | 20 | palera1n-specific artifact present |
 | medium | `ios.sideload.trollstore` | 15 | TrollStore sideloading artifact present (not a jailbreak) |
 | medium | `ios.urlscheme.jailbreak_store` | 15 | Jailbreak-store URL scheme responded to `canOpenURL` |
+| high | `ios.sandbox.write` | 30 | Sandbox write outside the app sandbox succeeded |
 | medium | `ios.simulator` | 20 | iOS simulator environment |
 | informational | `ios.debugger.sysctl` | 0 | `sysctl` reports P_TRACED (diagnostic) |
 | informational | `*.check.*` | 0 | Check timed out / unavailable (not compromise) |
@@ -493,7 +497,6 @@ Signal ids are part of the public contract — they are never renamed or reused 
 The scored baseline (Android + iOS Phase 1, rootless jailbreaks, renamed instrumentation, loopback TCP probes, expanded Android properties, iOS URL schemes, and read-deadline hardening) is **shipped**. Remaining work is optional / future:
 
 - **Native C++ unit tests in CI** — host-side fixture tests for the pure parsers (`ProcParsers`, `Scoring`, `SignalCatalog`) and the `TcpProbe` connect state machine. Jest covers the TypeScript wrapper layer today.
-- **String obfuscation** — compile-time obfuscation of path/token literal tables to raise the bar for casual static inspection (does not stop a determined reverse engineer).
 - **OEM / benign allowlist** — small, documented table to suppress specific low-severity `test-keys` / SELinux signals on legitimate preview/OEM builds. High-severity memory/mount signals are never allowlisted.
 - **Mount-namespace reshape** — the `android.mount.overlay` namespace-only check is effectively dead code today because `/proc/1/mountinfo` is unreadable by untrusted apps on stock Android (see comment in `cpp/ProcParsers.cpp`). A future reshape would use `statx(2)` with `STATX_ATTR_MOUNT_ROOT` and self-namespace path/content diffs.
 - **Play Integrity / App Attest** — optional client token acquisition behind `enablePlayIntegrity`, paired with a server verifier (see "Recommended pattern: pair with backend attestation"). This is server-side attestation work, not local detection.

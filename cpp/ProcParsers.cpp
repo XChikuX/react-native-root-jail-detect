@@ -316,7 +316,12 @@ namespace margelo::nitro::rootjaildetect {
       const std::string_view line = mapsContent.substr(lineStart, i - lineStart);
       if (const auto region = parseMapsRegion(line)) {
         const bool executable = region->permissions.find('x') != std::string_view::npos;
-        const bool anonymous = region->pathname.empty() || region->pathname.rfind("[anon:", 0) == 0;
+        // Only truly unnamed mappings count. ART/JIT exposes *named* anonymous
+        // regions on stock devices (e.g. `[anon:dalvik-jit-code-cache]`,
+        // `[anon:libc_malloc]`); counting those produced false positives on
+        // clean builds. Injection that mmaps RWX without a name still surfaces
+        // here, which is the intended heuristic.
+        const bool anonymous = region->pathname.empty();
         if (executable && anonymous) {
           ++executableAnonymousCount;
         }

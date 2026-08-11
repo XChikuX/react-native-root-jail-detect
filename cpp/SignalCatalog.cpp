@@ -89,8 +89,8 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_ADDON_D_MAGISK) return makeSpec(SignalId::ANDROID_ADDON_D_MAGISK, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.80);
     if (id == SignalId::ANDROID_INSTALL_RECOVERY) return makeSpec(SignalId::ANDROID_INSTALL_RECOVERY, Severity::LOW, SignalCategory::FILESYSTEM, 5.0, 0.35);
     if (id == SignalId::ANDROID_HOSTS_WRITABLE) return makeSpec(SignalId::ANDROID_HOSTS_WRITABLE, Severity::LOW, SignalCategory::FILESYSTEM, 5.0, 0.30);
-    if (id == SignalId::ANDROID_CUSTOM_ROM) return makeSpec(SignalId::ANDROID_CUSTOM_ROM, Severity::LOW, SignalCategory::SIGNATURE, 10.0, 0.65);
-    if (id == SignalId::ANDROID_LINEAGE) return makeSpec(SignalId::ANDROID_LINEAGE, Severity::LOW, SignalCategory::SIGNATURE, 10.0, 0.75);
+    if (id == SignalId::ANDROID_CUSTOM_ROM) return makeSpec(SignalId::ANDROID_CUSTOM_ROM, Severity::LOW, SignalCategory::SIGNATURE, 5.0, 0.65);
+    if (id == SignalId::ANDROID_LINEAGE) return makeSpec(SignalId::ANDROID_LINEAGE, Severity::LOW, SignalCategory::SIGNATURE, 5.0, 0.75);
     if (id == SignalId::ANDROID_LSPOSED_CACHE) return makeSpec(SignalId::ANDROID_LSPOSED_CACHE, Severity::LOW, SignalCategory::HOOK, 10.0, 0.40);
     if (id == SignalId::ANDROID_MAPS_ANON_INJECTION) return makeSpec(SignalId::ANDROID_MAPS_ANON_INJECTION, Severity::LOW, SignalCategory::INJECTION, 10.0, 0.25);
     if (id == SignalId::ANDROID_PROPS_INCONSISTENT_DEBUGGABLE) return makeSpec(SignalId::ANDROID_PROPS_INCONSISTENT_DEBUGGABLE, Severity::LOW, SignalCategory::PROPERTY, 5.0, 0.25);

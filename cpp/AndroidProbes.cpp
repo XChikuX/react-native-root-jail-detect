@@ -8,7 +8,6 @@
 #if defined(__ANDROID__)
 #include <dirent.h>
 #include <fcntl.h>
-#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/system_properties.h>
 #include <unistd.h>
@@ -16,7 +15,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -134,15 +132,34 @@ namespace margelo::nitro::rootjaildetect {
         containsCI(value.substr(value.size() - suffix.size()), suffix);
     }
 
-    bool commandReturnsPath(const char* command) noexcept {
-      FILE* pipe = ::popen(command, "r");
-      if (pipe == nullptr) {
+    // Walk the process PATH looking for an executable with the given name.
+    // No shell is spawned: a `popen("which ...")` would fork on every detection
+    // pass (including every watchdog tick), has no timeout if the shell is
+    // wedged, and trusts a hookable `/system/bin/sh`. `access(X_OK)` per PATH
+    // entry is bounded, allocation-light, and hookable only via the same
+    // syscall level every other filesystem probe here already relies on.
+    bool pathListsExecutable(std::string_view executable) noexcept {
+      const char* rawPath = ::getenv("PATH");
+      if (rawPath == nullptr) {
         return false;
       }
-      char buffer[256] = {};
-      const bool hasOutput = ::fgets(buffer, sizeof(buffer), pipe) != nullptr;
-      const int status = ::pclose(pipe);
-      return hasOutput && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+      const std::string_view path(rawPath);
+      size_t start = 0;
+      for (size_t i = 0; i <= path.size(); ++i) {
+        if (i != path.size() && path[i] != ':') {
+          continue;
+        }
+        const std::string_view dir = path.substr(start, i - start);
+        start = i + 1;
+        if (dir.empty()) {
+          continue;
+        }
+        const std::string candidate = std::string(dir) + "/" + std::string(executable);
+        if (::access(candidate.c_str(), X_OK) == 0) {
+          return true;
+        }
+      }
+      return false;
     }
 #endif // defined(__ANDROID__)
 
@@ -498,19 +515,21 @@ namespace margelo::nitro::rootjaildetect {
     const char* rawPath = ::getenv("PATH");
     if (rawPath != nullptr) {
       const std::string_view path(rawPath);
-      if (containsCI(path, "/data/adb/") || containsCI(path, "/sbin") ||
-          containsCI(path, "/product/bin") || containsCI(path, "/system_ext/bin")) {
+      // Only Magisk-layout directories are flagged. `/sbin`, `/product/bin`,
+      // and `/system_ext/bin` legitimately appear in the default PATH of older
+      // and OEM builds, so matching them was a false-positive source.
+      if (containsCI(path, "/data/adb/") || containsCI(path, "/debug_ramdisk")) {
         findings.push_back(ProcFinding{
           SignalId::ANDROID_ENV_PATH_MAGISK,
           "candidate-magisk-path-entry",
         });
       }
     }
-    if (commandReturnsPath("which su")) {
-      findings.push_back(ProcFinding{SignalId::ANDROID_CMDLINE_SU_EXEC, "which-su-returned-path"});
+    if (pathListsExecutable("su")) {
+      findings.push_back(ProcFinding{SignalId::ANDROID_CMDLINE_SU_EXEC, "su-executable-in-path"});
     }
-    if (commandReturnsPath("which magisk")) {
-      findings.push_back(ProcFinding{SignalId::ANDROID_CMDLINE_MAGISK_EXEC, "which-magisk-returned-path"});
+    if (pathListsExecutable("magisk")) {
+      findings.push_back(ProcFinding{SignalId::ANDROID_CMDLINE_MAGISK_EXEC, "magisk-executable-in-path"});
     }
 #endif
     return findings;

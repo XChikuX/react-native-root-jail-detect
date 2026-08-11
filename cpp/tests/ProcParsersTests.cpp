@@ -16,6 +16,13 @@ int main() {
   assert(anonymous.front().signalId == SignalId::ANDROID_MAPS_ANON_INJECTION);
   assert(scanMapsForHooks(maps).front().signalId == SignalId::ANDROID_MAPS_ZYGISK);
 
+  // Named anonymous regions (ART JIT, libc malloc) are normal on stock ART
+  // and must NOT trip the anon-injection heuristic.
+  constexpr std::string_view stockArtMaps =
+    "1000-2000 r-xp 00000000 00:00 0 [anon:dalvik-jit-code-cache]\n"
+    "3000-4000 r-xp 00000000 00:00 0 [anon:dalvik-jit-code-cache]\n";
+  assert(parseMapsForAnonymousInjection(stockArtMaps).empty());
+
   constexpr std::string_view mounts =
     "1 1 0:1 / /product rw,relatime - overlay overlay\n"
     "2 1 0:2 / /debug_ramdisk rw,relatime - overlay overlay\n"

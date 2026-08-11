@@ -470,10 +470,10 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | medium | `android.addon_d.magisk` | 20 | Magisk persistence script under `/system/addon.d` |
 | low | `android.install_recovery` | 5 | Conventional install-recovery script present (weak, stock-compatible marker) |
 | low | `android.hosts.writable` | 5 | System hosts file is writable by the app process |
-| low | `android.custom_rom` | 10 | Custom-ROM property marker |
-| low | `android.lineage` | 10 | LineageOS property marker |
+| low | `android.custom_rom` | 5 | Custom-ROM property marker (provenance, not root proof) |
+| low | `android.lineage` | 5 | LineageOS property marker (provenance, not root proof) |
 | low | `android.lsposed.cache` | 10 | Accessible LSPosed cache/module marker (candidate corroboration) |
-| low | `android.maps.anon_injection` | 10 | Cluster of executable anonymous mappings (hypothesis, fixture-gated) |
+| low | `android.maps.anon_injection` | 10 | Cluster of ≥2 unnamed executable mappings (hypothesis, fixture-gated; named ART/JIT regions excluded) |
 | low | `android.props.inconsistent_debuggable` | 5 | Debuggable/build-type or secure-property inconsistency (hypothesis) |
 | low | `android.props.inconsistent_verifiedboot` | 5 | Verified-boot and vbmeta state inconsistency (hypothesis) |
 | low | `android.props.inconsistent_fingerprint` | 5 | Fingerprint/build tags/type inconsistency (hypothesis) |
@@ -483,8 +483,8 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | low | `android.zygisk.variant.next` | 5 | Candidate Zygisk Next property marker |
 | low | `android.zygisk.variant.rezygisk` | 5 | Candidate ReZygisk property marker |
 | high | `android.sandbox.write.system_dir` | 30 | Write to an immutable system directory succeeded |
-| low | `android.cmdline.su_exec` | 10 | `which su` returned a path |
-| low | `android.cmdline.magisk_exec` | 10 | `which magisk` returned a path |
+| low | `android.cmdline.su_exec` | 10 | `su` executable present in the process PATH |
+| low | `android.cmdline.magisk_exec` | 10 | `magisk` executable present in the process PATH |
 | low | `android.env.path_magisk` | 5 | Process PATH contains a candidate injected directory |
 | low | `android.mount.magisk_chain` | 5 | Layered suspicious mount candidate (hypothesis) |
 | informational | `android.debugger.tracerpid` | 0 | `TracerPid` non-zero (diagnostic) |

@@ -33,11 +33,12 @@ target_sources(
   # Autolinking Setup
   ../nitrogen/generated/android/RootJailDetectOnLoad.cpp
   # Shared Nitrogen C++ sources
+  ../nitrogen/generated/shared/c++/HybridPackageManagerProbeSpec.cpp
   ../nitrogen/generated/shared/c++/HybridRootJailDetectSpec.cpp
   ../nitrogen/generated/shared/c++/HybridSecurityWatchdogSpec.cpp
   ../nitrogen/generated/shared/c++/HybridUrlSchemeProbeSpec.cpp
   # Android-specific Nitrogen C++ sources
-  
+  ../nitrogen/generated/android/c++/JHybridPackageManagerProbeSpec.cpp
 )
 
 # From node_modules/react-native/ReactAndroid/cmake-utils/folly-flags.cmake

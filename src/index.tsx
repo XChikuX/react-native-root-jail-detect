@@ -35,11 +35,12 @@ export {
   isDebuggerAttached,
   isDeviceCompromised,
   isEmulator,
+  setDetectionCallback,
   startSecurityWatchdog,
   stopSecurityWatchdog,
 } from './wrappers';
 
-export type { LegacySecurityWatchdogOptions } from './wrappers';
+export type { DetectionEventCallback, LegacySecurityWatchdogOptions } from './wrappers';
 
 // Backwards-compatible default export. Existing consumers that import the
 // default object keep working unchanged.
@@ -51,6 +52,7 @@ import {
   isDebuggerAttached as _isDebuggerAttached,
   isDeviceCompromised as _isDeviceCompromised,
   isEmulator as _isEmulator,
+  setDetectionCallback as _setDetectionCallback,
   startSecurityWatchdog as _startSecurityWatchdog,
   stopSecurityWatchdog as _stopSecurityWatchdog,
 } from './wrappers';
@@ -63,6 +65,7 @@ export default {
   isDebuggerAttached: _isDebuggerAttached,
   isDeviceCompromised: _isDeviceCompromised,
   isEmulator: _isEmulator,
+  setDetectionCallback: _setDetectionCallback,
   startSecurityWatchdog: _startSecurityWatchdog,
   stopSecurityWatchdog: _stopSecurityWatchdog,
 };

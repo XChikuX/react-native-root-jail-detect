@@ -132,14 +132,71 @@ namespace margelo::nitro::rootjaildetect {
     /// The app is running in the iOS simulator.
     inline constexpr std::string_view IOS_SIMULATOR = "ios.simulator";
 
-    // ---- iOS availability ----
+    // ---- iOS availability ---
     /// The URL-scheme check could not complete within the time budget.
     inline constexpr std::string_view IOS_CHECK_URLSCHEME = "ios.check.urlscheme";
+    /// The sandbox write test could not complete within the time budget.
+    inline constexpr std::string_view IOS_CHECK_SANDBOX = "ios.check.sandbox";
+
+    // ---- iOS: high severity (sandbox escape) ----
+    /// Sandbox write succeeded (writing outside app sandbox).
+    inline constexpr std::string_view IOS_SANDBOX_WRITE = "ios.sandbox.write";
 
     // ---- iOS: informational ----
     /// `sysctl` reports P_TRACED for this process.
     inline constexpr std::string_view IOS_DEBUGGER_SYSCTL = "ios.debugger.sysctl";
+
+    // ---- Android: sandbox escape ----
+    /// The sandbox write test could not complete within the time budget.
+    inline constexpr std::string_view ANDROID_CHECK_SANDBOX = "android.check.sandbox";
+    /// Sandbox write succeeded (writing to system directory).
+    inline constexpr std::string_view ANDROID_SANDBOX_WRITE = "android.sandbox.write";
+
+    // ---- Android: package enumeration ----
+    /// Root package detected via PackageManager enumeration.
+    inline constexpr std::string_view ANDROID_PACKAGE_MANAGER_ROOT = "android.package_manager.root";
   } // namespace SignalId
+
+  // Basic compile-time string obfuscation for sensitive literals.
+  // Uses a simple XOR with a compile-time key so literals don't appear
+  // in plain text in the binary. Not a strong protection, but raises the bar
+  // for casual static inspection.
+  template <size_t N>
+  struct ObfuscatedString {
+    constexpr ObfuscatedString(const char (&str)[N])
+        : size(N - 1) {
+      for (size_t i = 0; i < size; ++i) {
+        data[i] = str[i] ^ key(i);
+      }
+    }
+
+    [[nodiscard]] std::string decrypt() const noexcept {
+      std::string result;
+      result.reserve(size);
+      for (size_t i = 0; i < size; ++i) {
+        result.push_back(data[i] ^ key(i));
+      }
+      return result;
+    }
+
+    const char* c_str() const noexcept {
+      // Not thread-safe; intended for one-time decryption at startup.
+      static thread_local std::string cached;
+      if (cached.empty()) {
+        cached = decrypt();
+      }
+      return cached.c_str();
+    }
+
+   private:
+    static constexpr unsigned char key(size_t i) noexcept {
+      // Simple per-position key derived from a fixed seed.
+      return static_cast<unsigned char>(0x5A + (i * 0x17) ^ (i >> 2));
+    }
+
+    char data[N - 1];
+    size_t size;
+  };
 
   /// Default weight, severity, category, and reliability for a signal id. The
   /// weight is the value this signal contributes to the aggregated risk score

@@ -21,6 +21,61 @@ function getRoot(): RootJailDetect {
   return _root;
 }
 
+// ---- Detection event telemetry -----------------------------------------------
+// Basic telemetry: an optional, module-level callback invoked whenever a
+// detection pass completes and emits signals. Intended for logging, analytics,
+// or server-side reporting. The callback runs in the JS thread and does not
+// block the native pass.
+//
+// Usage:
+//   import { setDetectionCallback } from '@psync/anti-jailbreak';
+//   setDetectionCallback((assessment) => {
+//     console.log('Detection pass:', assessment);
+//   });
+
+/** Callback invoked after each {@linkcode checkDetailed} pass. */
+export type DetectionEventCallback = (
+  assessment: CompromiseAssessment,
+  metadata: {
+    platform: string;
+    timestampMs: number;
+  }
+) => void;
+
+let _detectionCallback: DetectionEventCallback | undefined;
+
+/**
+ * Register a callback that fires after every detection pass.
+ * Pass `undefined` to deregister.
+ *
+ * @example
+ * setDetectionCallback((assessment, meta) => {
+ *   if (assessment.compromised) {
+ *     analytics.track('device_compromised', { score: assessment.score });
+ *   }
+ * });
+ */
+export function setDetectionCallback(cb: DetectionEventCallback | undefined): void {
+  _detectionCallback = cb;
+}
+
+/**
+ * Invoke the telemetry callback if one is registered. Called from the
+ * promise resolution of `checkDetailed` so it does not block the native pass.
+ */
+function maybeEmitDetectionEvent(assessment: CompromiseAssessment): void {
+  if (_detectionCallback) {
+    try {
+      _detectionCallback(assessment, {
+        platform: Platform.OS,
+        timestampMs: Date.now(),
+      });
+    } catch (e) {
+      console.error('Detection callback threw:', e);
+    }
+  }
+}
+
 // Internal helper: run an async native operation without awaiting it, logging
 // any rejection. Used to preserve the historical synchronous signatures of
 // the watchdog start/stop wrappers. Returns nothing — callers ignore it.
@@ -62,6 +117,11 @@ const signalReasons: Record<string, string> = {
   'android.check.properties': 'The Android property probe did not complete within the time budget.',
   'android.check.root_paths': 'The root-path probe did not complete within the time budget.',
   'android.check.runtime': 'The runtime instrumentation probe did not complete within the time budget.',
+  'android.sandbox.write': 'A sandbox write to a restricted path succeeded.',
+  'android.check.sandbox': 'The sandbox write test did not complete within the time budget.',
+  'android.package_manager.root': 'A known root management package was detected via PackageManager.',
+  'ios.sandbox.write': 'A sandbox write to a restricted path succeeded.',
+  'ios.check.sandbox': 'The sandbox write test did not complete within the time budget.',
   'android.check.selinux': 'The SELinux state check did not complete within the time budget.',
   'ios.check.debugger': 'The iOS debugger check did not complete within the time budget.',
   'ios.check.dyld': 'The dyld image scan did not complete within the time budget.',
@@ -99,7 +159,9 @@ export function configure(options: RootJailDetectOptions): void {
  * the result is marked `partial: true` rather than throwing.
  */
 export async function checkDetailed(): Promise<CompromiseAssessment> {
-  return getRoot().checkDetailed();
+  const result = await getRoot().checkDetailed();
+  maybeEmitDetectionEvent(result);
+  return result;
 }
 
 /**
@@ -108,7 +170,9 @@ export async function checkDetailed(): Promise<CompromiseAssessment> {
  * both names invoke the same native pass.
  */
 export async function assessRisk(): Promise<CompromiseAssessment> {
-  return getRoot().checkDetailed();
+  const result = await getRoot().checkDetailed();
+  maybeEmitDetectionEvent(result);
+  return result;
 }
 
 /**

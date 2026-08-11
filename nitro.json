@@ -30,6 +30,16 @@
         "language": "c++",
         "implementationClassName": "HybridUrlSchemeProbe"
       }
+    },
+    "PackageManagerProbe": {
+      "ios": {
+        "language": "c++",
+        "implementationClassName": "HybridPackageManagerProbe"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridPackageManagerProbe"
+      }
     }
   },
   "ignorePaths": ["**/node_modules", "**/example", "**/lib"],

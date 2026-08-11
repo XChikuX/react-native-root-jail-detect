@@ -15,9 +15,11 @@
 #include <fbjni/fbjni.h>
 #include <NitroModules/HybridObjectRegistry.hpp>
 
+#include "JHybridPackageManagerProbeSpec.hpp"
 #include "HybridRootJailDetect.hpp"
 #include "HybridSecurityWatchdog.hpp"
 #include "HybridUrlSchemeProbe.hpp"
+#include <NitroModules/DefaultConstructableObject.hpp>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -27,14 +29,21 @@ int initialize(JavaVM* vm) {
   });
 }
 
-
+struct JHybridPackageManagerProbeSpecImpl: public jni::JavaClass<JHybridPackageManagerProbeSpecImpl, JHybridPackageManagerProbeSpec::JavaPart> {
+  static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/rootjaildetect/HybridPackageManagerProbe;";
+  static std::shared_ptr<JHybridPackageManagerProbeSpec> create() {
+    static const auto constructorFn = javaClassStatic()->getConstructor<JHybridPackageManagerProbeSpecImpl::javaobject()>();
+    jni::local_ref<JHybridPackageManagerProbeSpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
+    return javaPart->getJHybridPackageManagerProbeSpec();
+  }
+};
 
 void registerAllNatives() {
   using namespace margelo::nitro;
   using namespace margelo::nitro::rootjaildetect;
 
   // Register native JNI methods
-  
+  margelo::nitro::rootjaildetect::JHybridPackageManagerProbeSpec::CxxPart::registerNatives();
 
   // Register Nitro Hybrid Objects
   HybridObjectRegistry::registerHybridObjectConstructor(
@@ -62,6 +71,12 @@ void registerAllNatives() {
                     "The HybridObject \"HybridUrlSchemeProbe\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridUrlSchemeProbe>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "PackageManagerProbe",
+    []() -> std::shared_ptr<HybridObject> {
+      return JHybridPackageManagerProbeSpecImpl::create();
     }
   );
 }

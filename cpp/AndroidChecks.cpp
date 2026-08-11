@@ -4,13 +4,17 @@
 
 #include "AndroidChecks.hpp"
 #include "AndroidProbes.hpp"
+#include "HybridPackageManagerProbe.hpp"
 #include "ProcParsers.hpp"
 #include "SignalCatalog.hpp"
 #include "TcpProbe.hpp"
 
+#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <NitroModules/HybridObjectRegistry.hpp>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -204,6 +208,54 @@ namespace margelo::nitro::rootjaildetect {
       }
       if (!available) {
         result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_RUNTIME));
+      }
+    }
+
+    // ---- Sandbox write test -------------------------------------------------
+    if (expired(deadline)) {
+      result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_SANDBOX));
+      result.partial = true;
+    } else {
+      constexpr const char* kSandboxTestPath = "/data/local/tmp/su_check.txt";
+      std::ofstream testFile(kSandboxTestPath);
+      if (testFile.is_open()) {
+        testFile << "root-test";
+        testFile.close();
+        std::remove(kSandboxTestPath);
+        result.signals.push_back(
+          buildSignal(SignalId::ANDROID_SANDBOX_WRITE, "sandbox-write-success", includeEvidence)
+        );
+      }
+    }
+
+    // ---- PackageManager enumeration -----------------------------------------
+    if (expired(deadline)) {
+      result.partial = true;
+    } else {
+      std::shared_ptr<HybridPackageManagerProbeSpec> probe;
+      try {
+        std::shared_ptr<margelo::nitro::HybridObject> object =
+          margelo::nitro::HybridObjectRegistry::createHybridObject("PackageManagerProbe");
+        probe = std::dynamic_pointer_cast<HybridPackageManagerProbeSpec>(object);
+      } catch (...) {
+        probe = nullptr;
+      }
+      if (!probe) {
+        probe = std::make_shared<HybridPackageManagerProbe>();
+      }
+      try {
+        std::vector<std::string> rootPackages = probe->getInstalledRootPackages();
+        if (!rootPackages.empty()) {
+          for (const auto& pkg : rootPackages) {
+            (void)pkg;
+            result.signals.push_back(
+              buildSignal(SignalId::ANDROID_PACKAGE_MANAGER_ROOT, "root-package-detected", includeEvidence)
+            );
+            break;  // Only emit one signal for the first detected package
+          }
+        }
+      } catch (...) {
+        // PackageManager probe failed; not a detection.
       }
     }
 

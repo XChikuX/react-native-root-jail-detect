@@ -76,6 +76,11 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::IOS_SIMULATOR) return makeSpec(SignalId::IOS_SIMULATOR, Severity::MEDIUM, SignalCategory::SIGNATURE, 20.0, 0.90);
     if (id == SignalId::IOS_CHECK_URLSCHEME) return makeSpec(SignalId::IOS_CHECK_URLSCHEME, Severity::LOW, SignalCategory::DEBUGGER, 0.0, 0.0);
     if (id == SignalId::IOS_DEBUGGER_SYSCTL) return makeSpec(SignalId::IOS_DEBUGGER_SYSCTL, Severity::LOW, SignalCategory::DEBUGGER, 0.0, 0.90);
+    if (id == SignalId::IOS_CHECK_SANDBOX) return makeSpec(SignalId::IOS_CHECK_SANDBOX, Severity::LOW, SignalCategory::DEBUGGER, 0.0, 0.0);
+    if (id == SignalId::IOS_SANDBOX_WRITE) return makeSpec(SignalId::IOS_SANDBOX_WRITE, Severity::HIGH, SignalCategory::SANDBOX, 30.0, 0.85);
+    if (id == SignalId::ANDROID_CHECK_SANDBOX) return makeSpec(SignalId::ANDROID_CHECK_SANDBOX, Severity::LOW, SignalCategory::DEBUGGER, 0.0, 0.0);
+    if (id == SignalId::ANDROID_SANDBOX_WRITE) return makeSpec(SignalId::ANDROID_SANDBOX_WRITE, Severity::HIGH, SignalCategory::SANDBOX, 30.0, 0.80);
+    if (id == SignalId::ANDROID_PACKAGE_MANAGER_ROOT) return makeSpec(SignalId::ANDROID_PACKAGE_MANAGER_ROOT, Severity::HIGH, SignalCategory::PACKAGE, 25.0, 0.75);
     if (id == SignalId::ANDROID_CHECK_MAPS || id == SignalId::ANDROID_CHECK_MOUNTS ||
         id == SignalId::ANDROID_CHECK_SELINUX || id == SignalId::ANDROID_CHECK_ROOT_PATHS ||
         id == SignalId::ANDROID_CHECK_PROPERTIES || id == SignalId::ANDROID_CHECK_DEBUGGER ||

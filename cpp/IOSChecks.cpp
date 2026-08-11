@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
+#include <fstream>
 #endif
 
 namespace margelo::nitro::rootjaildetect {
@@ -255,6 +256,23 @@ namespace margelo::nitro::rootjaildetect {
         probeLocalTcpServices(kIOSProbes, sizeof(kIOSProbes) / sizeof(kIOSProbes[0]), deadline);
       for (const ProcFinding& finding : networkFindings) {
         result.signals.push_back(buildSignal(finding.signalId, finding.evidence, includeEvidence));
+      }
+    }
+
+    // ---- Sandbox write test -------------------------------------------------
+    if (expired(deadline)) {
+      result.partial = true;
+      result.signals.push_back(unavailableSignal(SignalId::IOS_CHECK_SANDBOX));
+    } else {
+      constexpr const char* kSandboxTestPath = "/private/jbtest.txt";
+      std::ofstream testFile(kSandboxTestPath);
+      if (testFile.is_open()) {
+        testFile << "jailbreak-test";
+        testFile.close();
+        std::remove(kSandboxTestPath);
+        result.signals.push_back(
+          buildSignal(SignalId::IOS_SANDBOX_WRITE, "sandbox-write-success", includeEvidence)
+        );
       }
     }
 

@@ -29,6 +29,7 @@ add_library(
   ../cpp/IOSChecks.cpp
   ../cpp/TcpProbe.cpp
   ../cpp/HybridUrlSchemeProbe.cpp
+  ../cpp/HybridPackageManagerProbe.cpp
   # JNI_OnLoad entry point for Nitro Modules autolinking
   ../cpp/cpp-adapter.cpp
 )

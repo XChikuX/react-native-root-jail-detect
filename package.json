@@ -205,7 +205,7 @@
     "typecheck": "tsc"
   },
   "types": "./lib/typescript/src/index.d.ts",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "workspaces": [
     "example"
   ]

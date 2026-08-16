@@ -20,9 +20,12 @@ export interface UrlSchemeOptions {
    */
   schemes?: string[];
   /**
-   * If `true`, emit an `ios.urlscheme.*` signal per responding scheme. If
-   * `false` (default), schemes are tested once and the aggregate signal
-   * `ios.urlscheme.jailbreak_store` is emitted when any responds.
+   * If `true`, emit an additional `ios.urlscheme.<scheme>` detail signal for
+   * each responding scheme. The aggregate signal
+   * `ios.urlscheme.jailbreak_store` is always emitted when any scheme
+   * responds, so the score contribution is identical in both modes; the
+   * per-scheme signals are informational (score `0`) and identify which
+   * stores are installed.
    */
   perSchemeSignals?: boolean;
 }

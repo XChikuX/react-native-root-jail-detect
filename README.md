@@ -200,8 +200,9 @@ configure({
     // Set to [] to disable URL-scheme probing entirely.
     // schemes: [],
 
-    // Emit one `ios.urlscheme.<scheme>` signal per responding scheme
-    // instead of the single aggregate `ios.urlscheme.jailbreak_store`.
+    // Additionally emit one informational `ios.urlscheme.<scheme>` signal
+    // per responding scheme. The aggregate `ios.urlscheme.jailbreak_store`
+    // signal (and its score contribution) is emitted in both modes.
     perSchemeSignals: true,
   },
 });
@@ -400,7 +401,7 @@ interface RootJailDetectOptions {
   enablePlayIntegrity?: boolean;     // default false — server-attested; not yet wired
   urlSchemes?: {
     schemes?: string[];              // default ['cydia', 'sileo', 'zbra', 'filza']; [] disables
-    perSchemeSignals?: boolean;      // default false
+    perSchemeSignals?: boolean;      // default false — adds per-scheme detail signals (score unchanged)
   };
 }
 ```

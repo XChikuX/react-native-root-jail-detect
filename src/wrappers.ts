@@ -45,8 +45,9 @@ export type DetectionEventCallback = (
 let _detectionCallback: DetectionEventCallback | undefined;
 
 /**
- * Register a callback that fires after every detection pass.
- * Pass `undefined` to deregister.
+ * Register a callback that fires after every `checkDetailed()` / `assessRisk()`
+ * detection pass (the legacy boolean wrappers intentionally do not emit
+ * telemetry). Pass `undefined` to deregister.
  *
  * @example
  * setDetectionCallback((assessment, meta) => {
@@ -165,6 +166,19 @@ const signalReasons: Record<string, string> = {
   'ios.urlscheme.jailbreak_store': 'A jailbreak-store URL scheme responded to canOpenURL.',
   'ios.simulator': 'The app is running in the iOS simulator.',
 };
+
+/**
+ * Human-readable fallback for the dynamic `ios.urlscheme.<scheme>` detail
+ * signals, which cannot be pre-listed in `signalReasons` because the scheme
+ * list is caller-configurable. Unknown ids still fall back to the raw id.
+ */
+function urlSchemeReason(id: string): string {
+  const prefix = 'ios.urlscheme.';
+  if (id.startsWith(prefix) && id.length > prefix.length) {
+    return `The ${id.slice(prefix.length)} URL scheme responded to canOpenURL.`;
+  }
+  return id;
+}
 
 /**
  * Apply configuration that affects subsequent `checkDetailed()` passes and the
@@ -287,7 +301,7 @@ export async function getDetectionReasons(): Promise<string[]> {
         // detection reason.
         continue;
       }
-      reasons.add(signal.evidence ?? signalReasons[signal.id] ?? signal.id);
+      reasons.add(signal.evidence ?? signalReasons[signal.id] ?? urlSchemeReason(signal.id));
     }
     return Array.from(reasons);
   } catch (error) {

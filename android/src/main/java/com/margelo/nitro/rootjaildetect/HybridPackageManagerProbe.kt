@@ -29,6 +29,8 @@ class HybridPackageManagerProbe : HybridPackageManagerProbeSpec() {
 
   private val knownRootPackages = mapOf(
       "com.topjohnwu.magisk" to "Magisk",
+      "me.weishu.kernelsu" to "KernelSU",
+      "me.bmax.apatch" to "APatch",
       "eu.chainfire.supersu" to "SuperSU",
       "com.noshufou.android.su" to "Superuser (ClockworkMod)",
       "com.kingroot.kinguser" to "KingRoot",

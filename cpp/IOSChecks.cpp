@@ -296,16 +296,32 @@ namespace margelo::nitro::rootjaildetect {
       }
       try {
         bool anySchemeResponded = false;
+        // Metadata for the per-scheme detail signals. Dynamic ids cannot live in
+        // the static catalog, so they mirror the aggregate signal's spec but carry
+        // a zero score — the aggregate below stays the single scoring contributor,
+        // keeping the total identical whether or not per-scheme detail is enabled.
+        const std::optional<SignalSpec> aggregateSpec =
+          lookupSignal(SignalId::IOS_URLSCHEME_JAILBREAK_STORE);
         for (const std::string& scheme : context.urlSchemes) {
           bool canOpen = probe->canOpenUrl(scheme);
           if (canOpen) {
             anySchemeResponded = true;
             if (context.urlSchemesPerSignal) {
-              result.signals.push_back(buildSignal("ios.urlscheme." + scheme, scheme + "://", includeEvidence));
+              result.signals.push_back(DetectionSignal(
+                "ios.urlscheme." + scheme,
+                Platform::IOS,
+                aggregateSpec.has_value() ? aggregateSpec->category : SignalCategory::SANDBOX,
+                aggregateSpec.has_value() ? aggregateSpec->severity : Severity::MEDIUM,
+                0.0,
+                true,
+                aggregateSpec.has_value() ? aggregateSpec->reliability : 0.45,
+                includeEvidence ? std::optional<std::string>(scheme + "://") : std::nullopt,
+                std::nullopt
+              ));
             }
           }
         }
-        if (!context.urlSchemesPerSignal && anySchemeResponded) {
+        if (anySchemeResponded) {
           result.signals.push_back(buildSignal(SignalId::IOS_URLSCHEME_JAILBREAK_STORE,
                                                "jailbreak-store-schemes", includeEvidence));
         }

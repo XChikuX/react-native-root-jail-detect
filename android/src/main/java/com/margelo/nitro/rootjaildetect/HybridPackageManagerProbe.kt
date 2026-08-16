@@ -1,9 +1,9 @@
 package com.margelo.nitro.rootjaildetect
 
-import android.content.Context
 import android.content.pm.PackageManager
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
+import com.margelo.nitro.NitroModules
 
 /**
  * Android edge HybridObject for PackageManager enumeration of known root packages.
@@ -67,7 +67,7 @@ class HybridPackageManagerProbe : HybridPackageManagerProbeSpec() {
     )
 
   private fun queryPackages(packages: Map<String, String>): Array<String> {
-    val context = getApplicationContext() ?: return emptyArray()
+    val context = NitroModules.applicationContext ?: return emptyArray()
     val packageManager = context.packageManager
     val installedPackages = mutableListOf<String>()
     for ((packageName, _) in packages) {
@@ -76,27 +76,10 @@ class HybridPackageManagerProbe : HybridPackageManagerProbeSpec() {
         installedPackages.add(packageName)
       } catch (e: PackageManager.NameNotFoundException) {
         // Package not installed, continue
+      } catch (e: SecurityException) {
+        // Package visibility or host policy can deny the query.
       }
     }
     return installedPackages.toTypedArray()
-  }
-
-  /**
-   * Get the application context via ActivityThread reflection.
-   * This is a common pattern when we don't have direct access to Context.
-   */
-  private fun getApplicationContext(): Context? {
-    try {
-      val activityThreadClass = Class.forName("android.app.ActivityThread")
-      val currentActivityThreadMethod = activityThreadClass.getDeclaredMethod("currentActivityThread")
-      currentActivityThreadMethod.isAccessible = true
-      val activityThread = currentActivityThreadMethod.invoke(null)
-      val getApplicationMethod = activityThreadClass.getDeclaredMethod("getApplication")
-      getApplicationMethod.isAccessible = true
-      val application = getApplicationMethod.invoke(activityThread)
-      return application as? Context
-    } catch (e: Exception) {
-      return null
-    }
   }
 }

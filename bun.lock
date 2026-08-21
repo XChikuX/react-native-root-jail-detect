@@ -31,10 +31,14 @@
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
+        "@expo/config-plugins": "*",
         "react": "*",
         "react-native": "*",
         "react-native-nitro-modules": ">=0.35.10",
       },
+      "optionalPeers": [
+        "@expo/config-plugins",
+      ],
     },
     "example": {
       "name": "@psync/anti-jailbreak-example",

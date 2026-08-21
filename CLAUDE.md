@@ -61,10 +61,10 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 - `cpp/Scoring.hpp` — header-only, side-effect-free aggregation (`aggregateSignals`) of fired signals into a clamped 0–100 score and a confidence level, with per-id deduplication so equivalent evidence is not double-counted.
 - `cpp/ProcParsers.hpp` / `.cpp` — pure, side-effect-free parsing of Linux `/proc` text formats (`/proc/self/maps`, `/proc/self/mountinfo`, `/proc/self/mounts`, `/proc/self/status`, `/sys/fs/selinux/enforce`) used by the Android path. It also parses anonymous executable mappings, Magisk `module.prop` documents, mount-chain candidates, and system-property inconsistencies. Every parser takes already-read file content and returns structured findings, so the logic is deterministic and unit-testable with fixture strings. `readFileIfExists` is the single impure entry point and never turns an unreadable file into a detection.
 - `cpp/AndroidProbes.hpp` / `.cpp` — Android-specific probes that require platform APIs: filesystem existence checks for root-manager directories, persistence markers, LSPosed caches, module manifests, hosts/system-directory writes, and `su` binaries (`stat(2)`); reads of Android system properties (`__system_property_get`); and bounded local command/PATH checks. Compiled under `#if defined(__ANDROID__)`; outside Android they return an empty set so the same files are safe in a host-side unit-test build.
-- `cpp/AndroidChecks.hpp` / `.cpp` — orchestrates the Android scored baseline and additive static/runtime probes: reads the relevant `/proc`/`/sys` files, runs the pure parsers, probes paths/properties/modules/packages, runs the loopback TCP probes via `TcpProbe`, and folds everything into a deduplicated list of `DetectionSignal`s plus the informational `debuggerDetected` flag. This is the only place that knows the full set of Android checks; `DeviceRiskAssessment.cpp` calls it under `#if defined(__ANDROID__)`.
+- `cpp/AndroidChecks.hpp` / `.cpp` — orchestrates the Android scored baseline and additive static/runtime probes: reads the relevant `/proc`/`/sys` files, runs the pure parsers, probes paths/properties/modules/packages, runs the loopback TCP probes via `TcpProbe`, and folds everything into a deduplicated list of `DetectionSignal`s plus the informational `debuggerDetected` flag. This is the only place that knows the full set of Android checks; `DeviceRiskAssessment.cpp` calls it under `#if defined(__ANDROID__)`. The PackageManager-enumeration block is Android-only and runs inside `facebook::jni::ThreadScope::WithClassLoader` (fbjni comes from the generated autolinking cmake): the checks execute on Nitro worker-pool threads and on the watchdog's raw `std::thread`, where JNI class lookup otherwise goes through the boot classloader and cannot resolve the app's Kotlin probe class.
 - `cpp/TcpProbe.hpp` / `.cpp` — loopback TCP probes used by both platforms to detect Frida server (27042), SSH (22/44), and ADB (emulator) responders. Pure C++ with a small RAII `TcpSocket` wrapper; takes short non-blocking connect timeouts and releases the fd on every path. Compiled on both platforms under `#if defined(__ANDROID__)` / `#elif defined(__APPLE__)` includes; defines `SOCK_CLOEXEC` to `0` when the iOS SDK lacks it (the flag is Linux-only and the sockets are short-lived, so the no-op define is safe).
 - `cpp/HybridUrlSchemeProbe.hpp` / `.cpp` — no-op C++ stub of the `UrlSchemeProbe` HybridObject, used on Android and any host build where URL-scheme probing is iOS-only. The real implementation is the Swift `HybridUrlSchemeProbe` class reached through the generated Swift-C++ bridge on iOS; `cpp/IOSChecks.cpp` calls `probe->canOpenUrl(scheme)` once per scheme rather than passing a `string[]` across the Swift boundary (see `TRIAGE.md` Issue 3 for the rationale — avoiding `std::vector` Sequence-conformance interop).
-- `cpp/HybridPackageManagerProbe.hpp` / `.cpp` — no-op C++ stub of the `PackageManagerProbe` HybridObject, used on iOS and any host build where PackageManager queries are Android-only. The real implementation is the Kotlin `HybridPackageManagerProbe` edge class (`android/src/main/java/com/margelo/nitro/rootjaildetect/HybridPackageManagerProbe.kt`), reached through the generated Kotlin-C++ bridge on Android; `cpp/AndroidChecks.cpp` calls all three package-category methods once per pass.
+- `cpp/HybridPackageManagerProbe.hpp` / `.cpp` — no-op C++ stub of the `PackageManagerProbe` HybridObject, used on iOS and any host build where PackageManager queries are Android-only, and as the on-device fallback whenever the Kotlin edge cannot be reached (registry miss). The real implementation is the Kotlin `HybridPackageManagerProbe` edge class (`android/src/main/java/com/margelo/nitro/rootjaildetect/HybridPackageManagerProbe.kt`), reached through the generated Kotlin-C++ bridge on Android; `cpp/AndroidChecks.cpp` calls all three package-category methods once per pass. The stub's constructor explicitly calls `HybridObject(TAG)` — the generated spec inherits `HybridObject` **virtually**, so a defaulted constructor would invoke Nitro's intentionally throwing default `HybridObject()` and abort the process at the fallback construction site.
 
 ### Android
 
@@ -158,7 +158,7 @@ Any native method change must be treated as a cross-platform change. Review and 
 10. `example/src/App.tsx` when the feature should be demonstrated
 11. Jest tests
 
-Keep the module registration name exactly `RootJailDetect` (the `createHybridObject<RootJailDetect>('RootJailDetect')` string must match the `nitro.json` autolinking key). Native implementation classes (`HybridRootJailDetect`, `HybridSecurityWatchdog`, `HybridUrlSchemeProbe`) must be **default-constructible** because Nitro autolinks them with no constructor arguments. Do not hand-edit generated code under `nitrogen/generated/`; change the `.nitro.ts` spec and re-run nitrogen.
+Keep the module registration name exactly `RootJailDetect` (the `createHybridObject<RootJailDetect>('RootJailDetect')` string must match the `nitro.json` autolinking key). Native implementation classes (`HybridRootJailDetect`, `HybridSecurityWatchdog`, `HybridUrlSchemeProbe`, `HybridPackageManagerProbe`) must be **constructible with no arguments** because Nitro autolinks them (and the C++ fallback paths construct them) with no constructor arguments — but "no arguments" does not mean `= default`: their constructors must still explicitly call `HybridObject(TAG)`. See the C++ style rules. Do not hand-edit generated code under `nitrogen/generated/`; change the `.nitro.ts` spec and re-run nitrogen.
 
 Prefer one cross-platform public concept rather than exposing platform-specific names. Platform-specific native details may remain in the codegen spec only when needed for normalization, as with `isEmulator`/`isSimulator`.
 
@@ -229,6 +229,8 @@ Follow the style already used in each language and keep changes focused.
 - Use RAII where possible and close native resources (`FILE*`, `dlopen`, sockets, Mach memory) on all returns.
 - Avoid undefined behavior from architecture-specific instruction assumptions; validate checks on every supported ABI.
 - The C++ core can call Swift/Kotlin edge HybridObjects through their generated C++ spec API. Verify codegen support before assuming the inverse direction (Swift/Kotlin consuming C++-backed objects).
+- Every C++ HybridObject implementation constructor must explicitly initialize the virtual base: `HybridFoo() : HybridObject(TAG) {}`. The nitrogen-generated `Hybrid*Spec` bases inherit `HybridObject` **virtually**, so the most-derived constructor owns the base initialization; `= default` or a missing mem-initializer silently calls Nitro's throwing default `HybridObject()` instead. Because the check runners (`runAndroidChecks`, `runIOSChecks`) are `noexcept`, that throw escapes as `std::terminate` → SIGABRT with no JS error — this exact bug crashed consumer apps when the PackageManagerProbe stub was constructed as a fallback.
+- JNI-touching calls made from a C++-created thread (Nitro worker pool, watchdog thread) — HybridObjectRegistry lookups and Kotlin edge method invocations — must run inside `facebook::jni::ThreadScope::WithClassLoader`. Natively created threads resolve classes through the boot classloader and cannot see app classes, so the lookup fails even when registration succeeded.
 - Preserve the CMake library name `RootJailDetect` (matches `androidCxxLibName` in `nitro.json` and `System.loadLibrary("RootJailDetect")` in the generated Kotlin).
 
 ## Generated and ignored artifacts
@@ -385,10 +387,16 @@ in order of likelihood:
    outside the verified range (see the README compatibility matrix) and the
    committed bindings are ABI-incompatible. Check the resolved version in the
    host app's lockfile.
-2. R8/ProGuard renaming the JNI-instantiated Kotlin classes. Consumers must NOT
+2. Uncaught C++ exception escaping a `noexcept` native path — SIGABRT
+   (`signal 6`) with an `Abort message:` logcat line naming the exception type.
+   `Cannot default-construct HybridObject!` means a HybridObject subclass
+   constructor omitted the required `HybridObject(TAG)` virtual-base
+   initializer (see the C++ style rules). The check runners are `noexcept` by
+   design, so any escaping exception is `std::terminate`, never a JS rejection.
+3. R8/ProGuard renaming the JNI-instantiated Kotlin classes. Consumers must NOT
    repackage `com.margelo.nitro.rootjaildetect.**` (see
    `android/proguard-rules.pro`); the classes are looked up by name from C++.
-3. `System.loadLibrary("RootJailDetect")` failing — autolinking not applied in
+4. `System.loadLibrary("RootJailDetect")` failing — autolinking not applied in
    the host app (Expo prebuild or manual linking issues).
 
 Note: `cpp/cpp-adapter.cpp` wraps the generated `registerAllNatives()` in a
@@ -397,7 +405,13 @@ failure. This exists because the Kotlin `PackageManagerProbe` registration
 path touches JVM classes at `JNI_OnLoad` time; if that fails in a consumer
 app (R8 renames, missing Kotlin classes), the library degrades to the no-op
 C++ probe stub instead of aborting the process at load time. Keep this guard
-when regenerating bindings.
+when regenerating bindings. The check-time registry lookup in
+`cpp/AndroidChecks.cpp` has a different failure mode: it runs on Nitro
+worker-pool threads, where JNI class resolution goes through the boot
+classloader and cannot see app classes — which is why that block is wrapped
+in `facebook::jni::ThreadScope::WithClassLoader`. Without it the lookup
+misses even a correctly registered probe and every check pass silently
+degrades to the stub.
 
 ### Gotchas (machine-specific)
 

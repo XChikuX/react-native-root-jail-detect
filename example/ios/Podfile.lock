@@ -2530,7 +2530,7 @@ PODS:
     - React-perflogger (= 0.83.10)
     - React-utils (= 0.83.10)
     - SocketRocket
-  - RootJailDetect (0.10.0):
+  - RootJailDetect (0.11.0):
     - NitroModules
   - SocketRocket (0.7.1)
   - Yoga (0.0.0)
@@ -2865,7 +2865,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 5cc0b8b95a5be99ad92aee2d59bc59987df97753
   ReactCodegen: 706864c0ba335c8d204f69056b213d6dffb349ba
   ReactCommon: d71e3b6d0134b09c1ec8e656f81daefae6902a97
-  RootJailDetect: d3066ac8a1efe1df4b6ec22760919068ff077344
+  RootJailDetect: e72844905b937cb902929436c04f276b9d9ff055
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Yoga: d2ed98551adb569fc38be0148666854e1ff60692
 

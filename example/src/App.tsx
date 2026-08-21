@@ -13,6 +13,8 @@ import {
 import {
   checkDetailed,
   getDetectionReasons,
+  startSecurityWatchdog,
+  stopSecurityWatchdog,
   type CompromiseAssessment,
 } from '@psync/anti-jailbreak';
 
@@ -23,6 +25,7 @@ function App() {
   const [isDebugger, setIsDebugger] = useState<boolean | null>(null);
   const [detectionReasons, setDetectionReasons] = useState<string[]>([]);
   const [detailed, setDetailed] = useState<CompromiseAssessment | null>(null);
+  const [watchdogRunning, setWatchdogRunning] = useState(false);
 
   const checkDeviceSecurity = async () => {
     setLoading(true);
@@ -60,6 +63,19 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const startWatchdog = () => {
+    // LOG_ONLY avoids terminating the example on emulators/simulators, which
+    // are detected as compromised by design. It still exercises the full
+    // background thread lifecycle and tick path.
+    startSecurityWatchdog({ intervalMs: 5000, protectionMode: 'LOG_ONLY' });
+    setWatchdogRunning(true);
+  };
+
+  const stopWatchdog = () => {
+    stopSecurityWatchdog();
+    setWatchdogRunning(false);
   };
 
   useEffect(() => {
@@ -230,6 +246,42 @@ function App() {
               <Text style={styles.recheckButtonText}>Recheck Security</Text>
             </TouchableOpacity>
 
+            <View style={styles.resultCard}>
+              <View style={styles.resultHeader}>
+                <Text style={styles.resultLabel}>Security Watchdog</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    { backgroundColor: watchdogRunning ? '#00C851' : '#999' },
+                  ]}
+                >
+                  <Text style={styles.statusText}>
+                    {watchdogRunning ? 'RUNNING' : 'STOPPED'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.resultDescription}>
+                Background periodic check. LOG_ONLY mode prevents the example app
+                from terminating on emulators/simulators.
+              </Text>
+              <View style={styles.watchdogButtonRow}>
+                <TouchableOpacity
+                  style={[styles.watchdogButton, styles.watchdogStartButton]}
+                  onPress={startWatchdog}
+                  disabled={watchdogRunning}
+                >
+                  <Text style={styles.watchdogButtonText}>Start</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.watchdogButton, styles.watchdogStopButton]}
+                  onPress={stopWatchdog}
+                  disabled={!watchdogRunning}
+                >
+                  <Text style={styles.watchdogButtonText}>Stop</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             {detectionReasons && detectionReasons.length > 0 && (
               <View style={styles.warningBox}>
                 <Text style={styles.warningTitle}>Security Notice</Text>
@@ -328,6 +380,28 @@ const styles = StyleSheet.create({
   recheckButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  watchdogButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  watchdogButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  watchdogStartButton: {
+    backgroundColor: '#00C851',
+  },
+  watchdogStopButton: {
+    backgroundColor: '#ff4444',
+  },
+  watchdogButtonText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600',
   },
   warningBox: {

@@ -53,6 +53,10 @@ android {
     minSdkVersion getExtOrDefault("minSdkVersion")
     targetSdkVersion getExtOrDefault("targetSdkVersion")
 
+    // Bundle keep rules into the published AAR so consumer R8 passes preserve
+    // the JNI-registered Kotlin HybridObjects and generated specs.
+    consumerProguardFiles 'consumer-rules.pro'
+
     externalNativeBuild {
       cmake {
         cppFlags "-frtti -fexceptions -Wall -fstack-protector-all"

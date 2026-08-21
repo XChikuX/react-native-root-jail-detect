@@ -19,7 +19,7 @@ npm install @psync/anti-jailbreak react-native-nitro-modules
 bun add @psync/anti-jailbreak react-native-nitro-modules
 ```
 
-*(Requires React Native 0.83+ New Architecture and `react-native-nitro-modules` `~0.35.1` — see the compatibility matrix below)*
+*(Requires React Native 0.83+ New Architecture and `react-native-nitro-modules` `>=0.35.10 <0.37.0` — see the compatibility matrix below)*
 
 ### Compatibility
 

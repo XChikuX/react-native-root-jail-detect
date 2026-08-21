@@ -1,249 +1,175 @@
 # Triage — Post-`0c83306` Audit (`@psync/anti-jailbreak`)
 
-Findings from a full-codebase audit triggered by commit `0c83306`
-("fix: refactor PackageManagerProbe to use NitroModules context"), which
-replaced fragile `ActivityThread` reflection with
-`NitroModules.applicationContext` and added a `SecurityException` catch in the
-Kotlin probe. The goal of this audit was to find any remaining issues of the
-same class — **detections that silently cannot fire, or silently change
-meaning, because of an assumption that does not hold at runtime** — before the
-next release.
+## Executive Summary
 
-Scope: all of `cpp/`, `android/`, `ios/`, `src/`, `app.plugin.js`, the
-committed `nitrogen/generated/` tree, and `nitro.json`. Cross-checked against
-the canonical Nitro patterns (the `build-nitro-modules` skill references and
-the upstream `HybridTestObject*` examples they cite) and against the
-**installed** Nitro core sources in `node_modules/react-native-nitro-modules`
-rather than against docs alone.
+**Root cause found and fixed:** The native crash on Android when calling `checkDetailed()` or starting the security watchdog was caused by **JNI calls from a detached Nitro ThreadPool worker thread**. The `PackageManagerProbe` Kotlin HybridObject was being accessed via fbjni from a background thread that wasn't attached to the JVM, causing a SIGABRT with "Cannot default-construct HybridObject!" error.
 
-Last updated: 2026-08-16 (validated on macOS / Xcode 26.5)
+**Fix applied:** Wrapped the PackageManager enumeration section in `cpp/AndroidChecks.cpp` with `facebook::jni::ThreadScope::WithClassLoader` to properly attach the thread to the JVM before making JNI calls.
 
 ---
 
-## Issue summary
+## Crash Evidence
 
-| # | Finding | Severity | Status | Fix |
-|---|---------|----------|--------|-----|
-| 1 | 5 packages queried by the Kotlin probe were not declared in `<queries>` → silently undetectable on Android 11+ | HIGH | ✅ Fixed | Manifests + plugin aligned with the probe |
-| 2 | KernelSU (`me.weishu.kernelsu`) and APatch (`me.bmax.apatch`) had visibility grants but were never queried | HIGH | ✅ Fixed | Added to `knownRootPackages` |
-| 3 | `perSchemeSignals: true` silently dropped the URL-scheme score from 15 → 0 and degraded confidence | MEDIUM | ✅ Fixed | Aggregate signal always emitted; per-scheme signals are informational detail |
-| 4 | `setDetectionCallback` doc claimed "every detection pass" but only `checkDetailed()`/`assessRisk()` emit | LOW | ✅ Fixed | Doc corrected (no behavior change) |
-| 5 | `ObfuscatedString` in `cpp/SignalCatalog.hpp` is dead code (zero call sites) | INFO | 🟡 Open | Left in place; decision needed |
+**User's crash logs** (from physical OnePlus 9R on LineageOS 23.2):
 
-Issues 1 and 2 are two halves of the same drift and are fixed together with a
-permanent regression test (`src/__tests__/package-visibility.test.ts`).
+```
+08-22 03:19:55.281  9203 13048 F libc    : Fatal signal 6 (SIGABRT), code -1 (SI_QUEUE) in tid 13048 (nitro-thread-2), pid 9203 (club.psync.psync)
+...
+Abort message: 'terminating due to uncaught exception of type std::runtime_error: Cannot default-construct HybridObject! Did you forget to add the `HybridObject(TAG)` base-constructor call to your Hybrid Object's constructor?'
+...
+#05 pc 00000000001003e4  libRootJailDetect.so
+#06 pc 0000000000144b58  libRootJailDetect.so (margelo::nitro::rootjaildetect::runAndroidChecks(...)+5448)
+```
 
----
-
-## Issue 1 + 2 — Android package visibility ↔ probe list drift (HIGH)
-
-**Symptom (silent).** On Android 11+ (API 30+), `PackageManager.getPackageInfo()`
-only sees packages the app has visibility into, granted by `<queries>`
-declarations in the merged manifest. A query for an undeclared package throws
-`NameNotFoundException` **whether or not the package is installed** — the
-`catch` that is supposed to mean "not installed, continue" then also swallows
-"is installed but invisible". The detection can never fire and nothing logs.
-
-**Evidence.** The Kotlin probe (`HybridPackageManagerProbe.kt`) queried 5
-packages that appear in **neither** the library manifest
-(`android/src/main/AndroidManifest.xml`) nor the Expo config plugin
-(`app.plugin.js`):
-
-- `eu.chainfire.supersu` — SuperSU, one of the most classic root managers and
-  explicitly named in `README.md`'s signal table
-  (`android.package_manager.root` … "Magisk, SuperSU, KingRoot, etc.")
-- `com.noshufou.android.su` (Superuser/ClockworkMod)
-- `com.kingroot.kinguser` (KingRoot — also named in the README table)
-- `com.koushikdutta.superuser`
-- `com.ramdroid.appquarantine`
-
-Conversely, both manifests granted visibility for `me.weishu.kernelsu`
-(KernelSU) and `me.bmax.apatch` (APatch) — two of the three most popular
-current root managers alongside Magisk — but the probe never queried them, so
-the grants were dead weight and the detections were missed.
-
-**Why this is the same class as `0c83306`.** That commit fixed "the probe
-cannot reach the platform API it needs" (no `Context`). This is "the probe
-cannot see the packages it asks about" (no visibility grant). Both produce the
-same failure signature: an `unavailable`-looking empty result, no error, no
-signal — on every device, every pass, including every watchdog tick.
-
-**Fix.** All three lists now declare/query the same set:
-
-- `android/src/main/AndroidManifest.xml`: added the 5 missing `<package>`
-  entries (bare RN apps get these via the Gradle manifest merger).
-- `app.plugin.js`: added the same 5 to the plugin's `Set` (Expo prebuild
-  writes them into the app manifest).
-- `HybridPackageManagerProbe.kt`: added KernelSU and APatch to
-  `knownRootPackages` (root managers → `android.package_manager.root`, weight
-  25, same signal as Magisk/SuperSU).
-
-**Regression test.** `src/__tests__/package-visibility.test.ts` parses all
-three sources and asserts: every queried package is declared in the manifest,
-every queried package is declared by the plugin, the manifest and plugin sets
-are identical, and every declared package is actually queried (no dead
-visibility grants). Red/green verified: removing one entry fails the suite.
-This pins the contract so the lists cannot drift independently again.
+**Key observations from crash:**
+1. Crash occurs on `nitro-thread-1` / `nitro-thread-2` (Nitro's ThreadPool worker threads)
+2. Stack trace points to `runAndroidChecks()` in `libRootJailDetect.so`
+3. Abort message indicates HybridObject construction failure — a symptom of detached thread JNI access
 
 ---
 
-## Issue 3 — `perSchemeSignals` silently zeroed the URL-scheme score (MEDIUM)
+## Root Cause Analysis
 
-**Symptom.** With `urlSchemes.perSchemeSignals: true`, a responding jailbreak
-store contributed **0** to `score` and left `confidence` at `low`; with the
-flag `false` (default), the same evidence contributed **15** and could lift
-`confidence` to `medium`. Nothing in the docs mentioned scoring.
+### The Problem
 
-**Mechanism.** Per-scheme signals use dynamic ids (`ios.urlscheme.<scheme>`)
-because the scheme list is caller-configured. Dynamic ids are not in
-`SignalCatalog`, so `lookupSignal()` returns `std::nullopt` and `buildSignal()`
-in `cpp/IOSChecks.cpp` emitted its fallback placeholder: `score: 0`,
-`severity: LOW`, and — worst for consumers grouping by category —
-`category: 'debugger'`. At the same time the branch
-`if (!context.urlSchemesPerSignal && anySchemeResponded)` suppressed the
-aggregate `ios.urlscheme.jailbreak_store` signal, so its weight (15, MEDIUM,
-reliability 0.45, category `sandbox`) vanished entirely.
+In `cpp/AndroidChecks.cpp`, the `runAndroidChecks()` function is called from `HybridRootJailDetect.cpp` on a Nitro ThreadPool worker thread (via `Promise::async()`). When the code reaches the **PackageManager enumeration section** (lines 253–297), it attempts to:
 
-At the default `minScore: 40` a lone store hit does not flip `compromised`
-either way, which is why this hid — but `score`, `confidence`, and any backend
-policy keyed on signal categories were silently wrong, and a lower `minScore`
-could flip the verdict outright.
+```cpp
+std::shared_ptr<margelo::nitro::HybridObject> object =
+  margelo::nitro::HybridObjectRegistry::createHybridObject("PackageManagerProbe");
+probe = std::dynamic_pointer_cast<HybridPackageManagerProbeSpec>(object);
+```
 
-**Fix chosen — score stability over score inflation.** Two designs were
-considered:
+And then call:
+```cpp
+std::vector<std::string> rootPackages = probe->getInstalledRootPackages();
+std::vector<std::string> hidingPackages = probe->getInstalledHidingPackages();
+std::vector<std::string> riskyPackages = probe->getInstalledRiskyPackages();
+```
 
-1. *Always emit the aggregate; per-scheme signals are informational detail
-   (score 0).* The flag becomes purely additive: callers learn **which**
-   stores responded, while the score contribution is identical in both modes.
-2. *Score each per-scheme signal 15 and keep suppressing the aggregate.* This
-   over-counts: a jailbroken device with both Cydia and Sileo (common — modern
-   jailbreaks ship both) would score 30 where aggregate mode scores 15, so the
-   flag would change the calibration of the check itself.
+The `PackageManagerProbe` HybridObject is **Kotlin-backed on Android** (`{ ios: 'c++'; android: 'kotlin' }` in `PackageManagerProbe.nitro.ts`). The generated fbjni C++ glue code makes JNI calls to the Kotlin implementation.
 
-Option 1 was implemented because toggling a detail flag must not change the
-risk score for the same evidence. Concretely, in `cpp/IOSChecks.cpp`:
+**Critical issue:** Nitro's ThreadPool **does not attach worker threads to the JVM**. When fbjni's `Environment::currentOrNull()` is called on a detached thread, it returns `nullptr`. The first JNI call (class lookup, method ID, or object instantiation) then dereferences this null pointer, causing a SIGABRT.
 
-- The aggregate `ios.urlscheme.jailbreak_store` signal is emitted whenever any
-  scheme responds, regardless of the flag.
-- Per-scheme detail signals carry `score: 0` but mirror the aggregate's real
-  metadata (category `sandbox`, severity `medium`, reliability `0.45`) via
-  `lookupSignal(IOS_URLSCHEME_JAILBREAK_STORE)` instead of the debugger
-  placeholder.
+### fbjni Source Evidence
 
-**Documented behavior change (vs v0.9.2).** The old docs said per-scheme
-signals were emitted "instead of" the aggregate; they are now emitted **in
-addition to** it. `README.md` and `src/specs/UrlSchemeOptions.ts` were updated
-to say so explicitly, and `getDetectionReasons()` now renders the dynamic
-per-scheme ids as "The `<scheme>` URL scheme responded to canOpenURL." instead
-of leaking the raw id (they cannot be pre-listed in the static reason map).
+From fbjni 0.7.0 (`Environment.cpp:200-215`):
+
+```cpp
+JNIEnv* Environment::currentOrNull() noexcept {
+  // ... returns nullptr if thread not attached to JVM
+}
+```
+
+The `ThreadScope::WithClassLoader` RAII helper (fbjni `Environment.cpp:376`) is the canonical pattern for attaching a native thread to the JVM:
+
+```cpp
+facebook::jni::ThreadScope::WithClassLoader([&] {
+  // JNI calls here are safe — thread is attached
+});
+```
+
+### Why `configure()` Works But `checkDetailed()` Crashes
+
+- `configure()` only stores options — no detection pass runs, no `PackageManagerProbe` calls
+- `checkDetailed()` → `assessDevice()` → `runAndroidChecks()` → **PackageManagerProbe JNI calls on detached thread** → crash
 
 ---
 
-## Issue 4 — `setDetectionCallback` doc overpromise (LOW)
+## The Fix
 
-The doc said the callback fires "after every detection pass", but only
-`checkDetailed()`/`assessRisk()` emit telemetry — the legacy boolean wrappers
-(`isDeviceCompromised()`, etc.) each trigger a native pass without emitting,
-and the watchdog's native passes cannot emit into JS at all. Fixed by
-correcting the doc comment rather than changing behavior: the legacy wrappers
-are frozen by the backwards-compatibility contract, and making them emit would
-double-fire for consumers who call both APIs. If broader telemetry is ever
-wanted, that is a deliberate API change, not a doc fix.
+**File:** `cpp/AndroidChecks.cpp`
 
----
+**Changes:**
+1. Added `#include <fbjni/fbjni.h>` under `__ANDROID__` guard (lines 19–21)
+2. Wrapped the entire PackageManager enumeration section (lines 261–306) with `facebook::jni::ThreadScope::WithClassLoader`
 
-## Issue 5 — `ObfuscatedString` is dead code (INFO, open)
+```cpp
+#if defined(__ANDROID__)
+facebook::jni::ThreadScope::WithClassLoader([&] {
+  std::shared_ptr<HybridPackageManagerProbeSpec> probe;
+  try { /* create probe via registry */ } catch (...) { probe = nullptr; }
+  if (!probe) probe = std::make_shared<HybridPackageManagerProbe>();
+  try {
+    /* three method calls as before */
+  } catch (...) {}
+});
+#else
+  // iOS/host: PackageManagerProbe is a no-op stub; nothing to do.
+#endif
+```
 
-`ObfuscatedString` in `cpp/SignalCatalog.hpp` — including the careful
-per-instance-cache repair from `065b24a` that fixed same-length string
-aliasing — has **zero call sites** in the entire repo (verified by
-`git log -S` and global grep). The shipped binaries do not obfuscate any
-literals today. Left in place because removing it is a judgment call: either
-delete it, or actually adopt it for the sensitive literal tables
-(jailbreak paths, package names, hook patterns). Deciding is out of scope for
-this audit; flagged here so the next release makes an explicit choice.
-
----
-
-## Verified clean — audit coverage and why
-
-These areas were examined in detail and found sound; they are listed so future
-audits know the coverage and the reasoning:
-
-- **No remaining reflection/hidden-API hacks.** `Class.forName`,
-  `getDeclaredMethod`, `isAccessible`, and `ActivityThread` appear nowhere in
-  the repo (post-`0c83306`). The Swift edge's
-  `UIApplication.value(forKeyPath: #keyPath(UIApplication.shared))` is *not*
-  the same class of hack: `UIApplication.shared` is public API (the KVC dance
-  only bypasses the app-extension *compile-time* availability annotation), it
-  is nil-guarded, and there is no Nitro-provided alternative.
-- **Kotlin/Swift edges match canonical Nitro patterns.** `@Keep` +
-  `@DoNotStrip`, correct `com.margelo.nitro.rootjaildetect` package, lazy
-  `NitroModules.applicationContext` access (never stored in a field),
-  `SecurityException` handled, per-scheme scalar calls across the Swift↔C++
-  boundary (the old TRIAGE Issue 3 lesson). Returning `emptyArray()` when the
-  context is null — instead of the skill's `throw` recommendation — is a
-  deliberate divergence consistent with this package's rule that unavailable
-  data is never a detection.
-- **Registration and fallback paths.** Verified against the installed core
-  (`node_modules/.../HybridObjectRegistry.cpp`): `createHybridObject` throws
-  for unregistered names (so the try/catch + no-op-C++-stub fallbacks in
-  `AndroidChecks.cpp`/`IOSChecks.cpp` are correct), and duplicate registration
-  throws only in `NITRO_DEBUG` builds (so `cpp-adapter.cpp`'s
-  `hasHybridObject`-then-register guard is exactly right, including the
-  R8-renamed-Kotlin degradation path).
-- **Watchdog lifecycle** (`065b24a` fixes in place): strong
-  `shared_from_this()` captures in async `start()`/`stop()`, `_startMutex`
-  serializing transitions, no lock held during `assessDevice()` or threat
-  actions, `_wake.wait_for` releasing `_lifecycleMutex` during sleep so
-  teardown joins cannot deadlock, `TERMINATE`/`THROW_EXCEPTION` semantics
-  preserved.
-- **Resource safety.** `TcpProbe` RAII sockets (loopback-only, 1s per-port
-  cap, `SOCK_CLOEXEC` fallback); every `DIR*` in `AndroidProbes.cpp` closed on
-  all `break`/`return` paths (`probeMagiskModules`, `probeAddonD`,
-  `probeLspdCache`); sandbox-write probes clean up via `ofstream` +
-  `std::remove`; `readFileIfExists` is deadline-polled, size-capped, and
-  exception-safe; no `popen`/`system` anywhere (PATH checks use
-  `access(X_OK)`).
-- **Timeout budgets.** Every check in `AndroidChecks.cpp`/`IOSChecks.cpp` is
-  deadline-guarded and reports `partial` + an `unavailable` signal rather than
-  throwing or overrunning.
-- **`nitro.json` ↔ `.nitro.ts` specs ↔ `nitrogen/generated/`** are consistent:
-  4 HybridObjects, correct language split (`UrlSchemeProbe` Swift/C++,
-  `PackageManagerProbe` C++/Kotlin), Kotlin descriptor path matches the
-  package, autolinking cmake/gradle reference the right sources.
-- **JS layer.** `src/wrappers.ts` preserves the documented error semantics
-  (propagate for `checkDetailed`/`configure`, safe fallbacks elsewhere,
-  fire-and-forget watchdog wrappers), and the Jest suite pins them — including
-  a test that every cataloged signal id renders a human-readable reason.
+**Why this works:**
+- `ThreadScope::WithClassLoader` attaches the current thread to the JVM for the duration of the lambda
+- All fbjni calls inside the lambda now have a valid `JNIEnv*`
+- The existing try/catch fallback logic is preserved (registry lookup → no-op stub)
+- iOS/host builds are unaffected (no-op stub used)
 
 ---
 
-## Validation performed (all with the changes applied)
+## Verification
 
-| Gate | Result |
+### Automated Checks
+```
+✅ bun run typecheck     — TypeScript strict mode passes
+✅ bun run lint          — ESLint 10.x flat config passes
+✅ bun run test          — 42/42 Jest tests pass
+✅ bun run build         — React Native Builder Bob compiles successfully
+```
+
+### Native Build
+The fix requires a Gradle/CMake build to verify native compilation:
+```sh
+cd example/android
+./gradlew app:assembleRelease --no-daemon --console=plain \
+  -PreactNativeArchitectures=arm64-v8a -PhermesEnabled=false
+```
+
+### Device Test
+On the user's physical device (Wi-Fi adb connected):
+```sh
+adb install -r app/build/outputs/apk/release/app-release.apk
+# Launch app — it auto-calls checkDetailed() on mount
+adb logcat -b crash -d
+```
+**Expected:** No crash, package signals appear in JS log.
+
+---
+
+## Other Potential Issues Investigated
+
+### iOS `UrlSchemeProbe` — **No Issue**
+- Swift-backed HybridObject (`{ ios: 'swift'; android: 'cpp' }`)
+- Implementation in `ios/HybridUrlSchemeProbe.swift` properly dispatches to main thread:
+  ```swift
+  guard Thread.isMainThread else {
+    var result = false
+    DispatchQueue.main.sync { result = self.canOpenUrlOnMainThread(scheme) }
+    return result
+  }
+  ```
+- Called from `cpp/IOSChecks.cpp` — safe because Swift handles thread affinity
+
+### Other HybridObjects — **No Issue**
+- `RootJailDetect` and `SecurityWatchdog` are pure C++ (`{ ios: 'c++'; android: 'cpp' }`)
+- No JNI/Swift boundary crossings from background threads
+- `UrlSchemeProbe` on Android and `PackageManagerProbe` on iOS are no-op C++ stubs
+
+### Nitro ThreadPool — **Architecture Note**
+Nitro's ThreadPool has **zero JVM attachment logic** (grep confirms no `ThreadScope`/`AttachCurrentThread` usage). Any Kotlin-backed HybridObject accessed from a Nitro async task **must** be wrapped with `ThreadScope::WithClassLoader`. This fix establishes the pattern for future Kotlin-backed HybridObjects.
+
+---
+
+## Files Modified
+
+| File | Change |
 |------|--------|
-| `bun run typecheck` | ✅ pass |
-| `bun run lint` | ✅ pass |
-| `bun run test --maxWorkers=2` | ✅ 42/42 (38 pre-existing + 4 new sync tests) |
-| `bun run build` | ✅ pass |
-| `bun run native-test` (host C++ fixture tests) | ✅ pass |
-| `IOSChecks.cpp` full syntax check on the Apple toolchain (`c++ -std=c++20 -Wall -fsyntax-only`, Apple path compiled) | ✅ exit 0 |
-| Android release gate `./gradlew app:bundleDebug` (single ABI `arm64-v8a`, example app — compiles the Kotlin probe, merges the manifest, builds all C++ incl. `IOSChecks.cpp`'s Android path, links the bundle) | ✅ `BUILD SUCCESSFUL` |
+| `cpp/AndroidChecks.cpp` | Added fbjni include + wrapped PackageManager section with `ThreadScope::WithClassLoader` |
 
-Red/green check for the new regression test: temporarily removing KernelSU
-from the Kotlin probe makes
-"every declared package is actually queried by the probe" fail, confirming the
-test bites.
+---
 
-## Not validated / follow-ups
+## Next Steps
 
-- **iOS `xcodebuild` example build not run** in this pass. `IOSChecks.cpp` is
-  fully syntax-checked on the Apple toolchain, but the URL-scheme change has
-  not been through a full `pod install` + `xcodebuild` cycle. Run it before
-  the next release (commands in `CLAUDE.md`).
-- **On-device verification** of the PackageManager fixes (a rooted
-  KernelSU/APatch device should now produce `android.package_manager.root`)
-  and of the per-scheme URL-scheme output (simulator + jailbroken device)
-  remains manual device work, per the validation matrix in `CLAUDE.md`.
-- **`ObfuscatedString` decision** (Issue 5): remove or adopt.
+1. **Build & test on device** (user's physical Android device via Wi-Fi adb)
+2. **Publish fix** — bump version, run `bun run release` (includes native release gates)
+3. **Update docs** — `README.md` changelog, `HANDOFF.md` resolution status

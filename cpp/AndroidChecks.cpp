@@ -16,6 +16,10 @@
 
 #include <NitroModules/HybridObjectRegistry.hpp>
 
+#if defined(__ANDROID__)
+#include <fbjni/fbjni.h>
+#endif
+
 namespace margelo::nitro::rootjaildetect {
 
   namespace {
@@ -254,46 +258,52 @@ namespace margelo::nitro::rootjaildetect {
     if (expired(deadline)) {
       result.partial = true;
     } else {
-      std::shared_ptr<HybridPackageManagerProbeSpec> probe;
-      try {
-        std::shared_ptr<margelo::nitro::HybridObject> object =
-          margelo::nitro::HybridObjectRegistry::createHybridObject("PackageManagerProbe");
-        probe = std::dynamic_pointer_cast<HybridPackageManagerProbeSpec>(object);
-      } catch (...) {
-        probe = nullptr;
-      }
-      if (!probe) {
-        probe = std::make_shared<HybridPackageManagerProbe>();
-      }
-      try {
-        std::vector<std::string> rootPackages = probe->getInstalledRootPackages();
-        if (!rootPackages.empty()) {
-          for (const auto& pkg : rootPackages) {
-            result.signals.push_back(
-              buildSignal(SignalId::ANDROID_PACKAGE_MANAGER_ROOT, "root-package:" + pkg, includeEvidence)
-            );
-            break;  // Only emit one signal for the first detected package
+#if defined(__ANDROID__)
+      facebook::jni::ThreadScope::WithClassLoader([&] {
+        std::shared_ptr<HybridPackageManagerProbeSpec> probe;
+        try {
+          std::shared_ptr<margelo::nitro::HybridObject> object =
+            margelo::nitro::HybridObjectRegistry::createHybridObject("PackageManagerProbe");
+          probe = std::dynamic_pointer_cast<HybridPackageManagerProbeSpec>(object);
+        } catch (...) {
+          probe = nullptr;
+        }
+        if (!probe) {
+          probe = std::make_shared<HybridPackageManagerProbe>();
+        }
+        try {
+          std::vector<std::string> rootPackages = probe->getInstalledRootPackages();
+          if (!rootPackages.empty()) {
+            for (const auto& pkg : rootPackages) {
+              result.signals.push_back(
+                buildSignal(SignalId::ANDROID_PACKAGE_MANAGER_ROOT, "root-package:" + pkg, includeEvidence)
+              );
+              break;  // Only emit one signal for the first detected package
+            }
           }
+          std::vector<std::string> hidingPackages = probe->getInstalledHidingPackages();
+          if (!hidingPackages.empty()) {
+            result.signals.push_back(buildSignal(
+              SignalId::ANDROID_PACKAGE_MANAGER_HMA,
+              "hiding-package:" + hidingPackages.front(),
+              includeEvidence
+            ));
+          }
+          std::vector<std::string> riskyPackages = probe->getInstalledRiskyPackages();
+          if (!riskyPackages.empty()) {
+            result.signals.push_back(buildSignal(
+              SignalId::ANDROID_PACKAGE_MANAGER_RISKY,
+              "risky-package:" + riskyPackages.front(),
+              includeEvidence
+            ));
+          }
+        } catch (...) {
+          // PackageManager probe failed; not a detection.
         }
-        std::vector<std::string> hidingPackages = probe->getInstalledHidingPackages();
-        if (!hidingPackages.empty()) {
-          result.signals.push_back(buildSignal(
-            SignalId::ANDROID_PACKAGE_MANAGER_HMA,
-            "hiding-package:" + hidingPackages.front(),
-            includeEvidence
-          ));
-        }
-        std::vector<std::string> riskyPackages = probe->getInstalledRiskyPackages();
-        if (!riskyPackages.empty()) {
-          result.signals.push_back(buildSignal(
-            SignalId::ANDROID_PACKAGE_MANAGER_RISKY,
-            "risky-package:" + riskyPackages.front(),
-            includeEvidence
-          ));
-        }
-      } catch (...) {
-        // PackageManager probe failed; not a detection.
-      }
+      });
+#else
+      // iOS/host: PackageManagerProbe is a no-op stub; nothing to do.
+#endif
     }
 
     // ---- Loopback TCP service probes (Frida / SSH / ADB) --------------------

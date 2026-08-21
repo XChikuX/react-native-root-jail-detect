@@ -9,7 +9,10 @@
 
 namespace margelo::nitro::rootjaildetect {
 
-HybridPackageManagerProbe::HybridPackageManagerProbe() = default;
+// The generated spec inherits `HybridObject` virtually, so this most-derived
+// constructor must initialize the virtual base explicitly — a defaulted
+// constructor would hit Nitro's throwing default `HybridObject()` instead.
+HybridPackageManagerProbe::HybridPackageManagerProbe() : HybridObject(TAG) {}
 
 std::vector<std::string> HybridPackageManagerProbe::getInstalledRootPackages() {
   // No-op on iOS/host. The Android implementation lives in Kotlin.

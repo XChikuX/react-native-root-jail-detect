@@ -315,6 +315,7 @@ describe('@psync/anti-jailbreak wrappers', () => {
           'android.env.path_magisk',
           'android.mount.magisk_chain',
           'android.mount.denylist_unmount',
+          'android.mount.overlayfs',
           'android.check.modules',
       ];
       mockCheckDetailed.mockResolvedValue(
@@ -431,6 +432,24 @@ describe('@psync/anti-jailbreak wrappers', () => {
         })
       );
       await expect(getDetectionReasons()).resolves.toEqual([]);
+    });
+
+    it('maps the overlay-filesystem signal to human-readable text', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [
+            stubSignal('android.mount.overlayfs', {
+              category: 'mount',
+              severity: 'medium',
+              score: 15,
+              reliability: 0.6,
+            }),
+          ],
+        })
+      );
+      await expect(getDetectionReasons()).resolves.toEqual([
+        'An overlay filesystem is mounted over a system partition (modified system image — adb remount, GSI, or systemless-overlay root).',
+      ]);
     });
   });
 

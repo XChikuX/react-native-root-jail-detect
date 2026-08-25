@@ -232,6 +232,56 @@ namespace margelo::nitro::rootjaildetect {
       }
     }
 
+    // A parsed mountinfo line. The mount point is always the 5th
+    // whitespace-delimited field; the filesystem type and mount source follow
+    // the literal `-` separator that terminates the variable-length
+    // optional-fields run (`shared`, `master`, `propagate_from`, `unbindable`),
+    // so they are located relative to that separator, never by fixed column.
+    struct MountinfoLine {
+      std::string_view mountPoint;
+      std::string_view fsType;
+      std::string_view source;
+      bool valid = false;
+    };
+
+    MountinfoLine parseMountinfoLine(std::string_view line) noexcept {
+      MountinfoLine parsed;
+      std::vector<std::string_view> fields;
+      size_t pos = 0;
+      while (pos < line.size()) {
+        while (pos < line.size() &&
+               std::isspace(static_cast<unsigned char>(line[pos]))) {
+          ++pos;
+        }
+        if (pos >= line.size()) {
+          break;
+        }
+        const size_t start = pos;
+        while (pos < line.size() &&
+               !std::isspace(static_cast<unsigned char>(line[pos]))) {
+          ++pos;
+        }
+        fields.push_back(line.substr(start, pos - start));
+      }
+
+      constexpr size_t kMountPointField = 4;
+      if (fields.size() <= kMountPointField) {
+        return parsed;
+      }
+      parsed.mountPoint = fields[kMountPointField];
+
+      size_t separator = kMountPointField + 1;
+      while (separator < fields.size() && fields[separator] != "-") {
+        ++separator;
+      }
+      if (separator + 2 < fields.size()) {
+        parsed.fsType = fields[separator + 1];
+        parsed.source = fields[separator + 2];
+        parsed.valid = true;
+      }
+      return parsed;
+    }
+
   } // namespace
 
   /**
@@ -499,13 +549,10 @@ namespace margelo::nitro::rootjaildetect {
     // scoped storage) out of the result while catching the cleanup pattern.
     //
     // Mountinfo format: "ID parent maj:min root mountpoint options [optional ...] - fstype source super_options"
-    // The mount point is always the 5th whitespace-delimited field (index 4).
-    // The filesystem type and mount source follow the literal `-` separator that
-    // terminates the optional-fields run, so they are located relative to that
-    // separator rather than by a fixed column index: optional fields
-    // (`shared`, `master`, `propagate_from`, `unbindable`) are optional and
-    // their count varies per line, so fixed indices would drift.
-    constexpr size_t kMountPointField = 4;
+    // Field parsing is delegated to `parseMountinfoLine` (see the anonymous
+    // namespace): the mount point is field 5, and the filesystem type/source
+    // are located relative to the `-` separator so optional fields never shift
+    // the parse.
 
     // Canonical system paths that are block-device-backed on stock Android.
     constexpr std::string_view kSystemPaths[] = {
@@ -522,53 +569,22 @@ namespace margelo::nitro::rootjaildetect {
         (lineEnd == std::string_view::npos ? selfMountinfoContent.size() : lineEnd) - lineStart
       );
       if (!line.empty()) {
-        // Split into whitespace-separated fields. The optional-fields run makes
-        // each line variable-length, so collect into a dynamic vector instead of
-        // assuming a fixed field count.
-        std::vector<std::string_view> fields;
-        size_t pos = 0;
-        while (pos < line.size()) {
-          while (pos < line.size() &&
-                 std::isspace(static_cast<unsigned char>(line[pos]))) {
-            ++pos;
-          }
-          if (pos >= line.size()) {
-            break;
-          }
-          const size_t start = pos;
-          while (pos < line.size() &&
-                 !std::isspace(static_cast<unsigned char>(line[pos]))) {
-            ++pos;
-          }
-          fields.push_back(line.substr(start, pos - start));
-        }
-
-        if (fields.size() > kMountPointField) {
-          const std::string_view mountPoint = fields[kMountPointField];
-          // Locate the `-` separator; the filesystem type is the next field and
-          // the mount source the field after that.
-          size_t separator = kMountPointField + 1;
-          while (separator < fields.size() && fields[separator] != "-") {
-            ++separator;
-          }
-          if (separator + 2 < fields.size()) {
-            const std::string_view fsType = fields[separator + 1];
-            const std::string_view source = fields[separator + 2];
-            const bool isTmpfs = fsType == "tmpfs";
-            const bool isSystemPath = std::find_if(
-              std::begin(kSystemPaths), std::end(kSystemPaths),
-              [&mountPoint](std::string_view candidate) {
-                return mountPoint == candidate;
-              }
-            ) != std::end(kSystemPaths);
-            const bool mentionsMagisk = containsCI(source, "magisk");
-            if (isTmpfs && isSystemPath && mentionsMagisk) {
-              // Count distinct paths so two identical mounts of the same path
-              // cannot satisfy the dual-indicator gate on their own.
-              if (std::find(matchedPaths.begin(), matchedPaths.end(), mountPoint) ==
-                  matchedPaths.end()) {
-                matchedPaths.push_back(mountPoint);
-              }
+        const MountinfoLine parsed = parseMountinfoLine(line);
+        if (parsed.valid) {
+          const bool isTmpfs = parsed.fsType == "tmpfs";
+          const bool isSystemPath = std::find_if(
+            std::begin(kSystemPaths), std::end(kSystemPaths),
+            [&parsed](std::string_view candidate) {
+              return parsed.mountPoint == candidate;
+            }
+          ) != std::end(kSystemPaths);
+          const bool mentionsMagisk = containsCI(parsed.source, "magisk");
+          if (isTmpfs && isSystemPath && mentionsMagisk) {
+            // Count distinct paths so two identical mounts of the same path
+            // cannot satisfy the dual-indicator gate on their own.
+            if (std::find(matchedPaths.begin(), matchedPaths.end(), parsed.mountPoint) ==
+                matchedPaths.end()) {
+              matchedPaths.push_back(parsed.mountPoint);
             }
           }
         }
@@ -588,6 +604,63 @@ namespace margelo::nitro::rootjaildetect {
         evidence += matchedPaths[i];
       }
       return {ProcFinding{SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT, std::move(evidence)}};
+    }
+    return {};
+  }
+
+  std::vector<ProcFinding> scanMountsForOverlayFs(std::string_view mountinfoContent) noexcept {
+    // An `overlay`/`overlayfs` super-block mounted over a canonical system
+    // partition means the system image has been overlaid: `adb remount` on an
+    // unlocked bootloader, GSI/DSU installs, or a systemless-overlay root
+    // setup. Stock production builds back these partitions with erofs/ext4/
+    // f2fs, so an overlay on one of them is never stock. Reported at MEDIUM
+    // weight (not HIGH like an explicit Magisk artifact) because a developer
+    // remount is "modified environment" rather than proof of a root framework;
+    // a single match is enough because one overlaid system partition is
+    // already meaningful.
+    constexpr std::string_view kSystemPaths[] = {
+      "/system", "/vendor", "/product", "/system_ext", "/odm", "/oem",
+    };
+
+    std::vector<std::string> matchedPaths;
+
+    size_t lineStart = 0;
+    while (lineStart <= mountinfoContent.size()) {
+      const size_t lineEnd = mountinfoContent.find('\n', lineStart);
+      const std::string_view line = mountinfoContent.substr(
+        lineStart,
+        (lineEnd == std::string_view::npos ? mountinfoContent.size() : lineEnd) - lineStart
+      );
+      if (!line.empty()) {
+        const MountinfoLine parsed = parseMountinfoLine(line);
+        if (parsed.valid &&
+            (parsed.fsType == "overlay" || parsed.fsType == "overlayfs")) {
+          const bool isSystemPath = std::find_if(
+            std::begin(kSystemPaths), std::end(kSystemPaths),
+            [&parsed](std::string_view candidate) {
+              return parsed.mountPoint == candidate;
+            }
+          ) != std::end(kSystemPaths);
+          if (isSystemPath) {
+            matchedPaths.emplace_back(parsed.mountPoint);
+          }
+        }
+      }
+      if (lineEnd == std::string_view::npos) {
+        break;
+      }
+      lineStart = lineEnd + 1;
+    }
+
+    if (!matchedPaths.empty()) {
+      std::string evidence = "overlay-over-system-paths=";
+      for (size_t i = 0; i < matchedPaths.size(); ++i) {
+        if (i > 0) {
+          evidence.push_back(',');
+        }
+        evidence += matchedPaths[i];
+      }
+      return {ProcFinding{SignalId::ANDROID_MOUNT_OVERLAYFS, std::move(evidence)}};
     }
     return {};
   }

@@ -132,6 +132,17 @@ namespace margelo::nitro::rootjaildetect {
     std::string_view selfMountinfoContent
   ) noexcept;
 
+  /// Detect an `overlay`/`overlayfs` super-block mounted over a canonical
+  /// system partition (`/system`, `/vendor`, `/product`, `/system_ext`, `/odm`,
+  /// `/oem`). Stock production builds back these partitions with erofs/ext4/
+  /// f2fs, so an overlay over one of them is never stock — it indicates
+  /// `adb remount` on an unlocked bootloader, a GSI/DSU install, or a
+  /// systemless-overlay root setup. A single match is reported (one overlaid
+  /// system partition is already meaningful); severity is MEDIUM rather than
+  /// HIGH because a developer remount is "modified environment" without proof
+  /// of a root framework.
+  std::vector<ProcFinding> scanMountsForOverlayFs(std::string_view mountinfoContent) noexcept;
+
   /// Parse `TracerPid:` from `/proc/self/status` content. Returns `std::nullopt`
   /// when the field is absent or unparseable. A nonzero value means a tracer is
   /// attached; this is reported as an informational signal, not as compromise.

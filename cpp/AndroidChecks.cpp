@@ -138,6 +138,14 @@ namespace margelo::nitro::rootjaildetect {
           scanDenyListUnmountFingerprint(mountinfo.value_or("")),
           includeEvidence
         );
+        // Overlay filesystem over a canonical system partition (adb remount,
+        // GSI/DSU, systemless-overlay root). Independent of the explicit-token
+        // and DenyList scans; fires even when no magisk identifier is visible.
+        appendFindings(
+          result.signals,
+          scanMountsForOverlayFs(mountinfo.value_or("")),
+          includeEvidence
+        );
         if (mountinfo.has_value()) {
           if (auto initMountinfo = readFileIfExists(K_INIT_MOUNTINFO, deadline, 128 * 1024)) {
             appendFindings(result.signals,

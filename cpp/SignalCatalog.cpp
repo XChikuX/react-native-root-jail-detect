@@ -117,6 +117,13 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT) return makeSpec(
       SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT, Severity::MEDIUM, SignalCategory::MOUNT, 15.0, 0.55
     );
+    // Overlay filesystem over a system partition: never stock, but a developer
+    // remount / GSI is "modified environment" rather than proof of a root
+    // framework, so MEDIUM rather than HIGH. Weaker than the explicit-artifact
+    // mount signal; stronger than the namespace-diff hint.
+    if (id == SignalId::ANDROID_MOUNT_OVERLAYFS) return makeSpec(
+      SignalId::ANDROID_MOUNT_OVERLAYFS, Severity::MEDIUM, SignalCategory::MOUNT, 15.0, 0.6
+    );
     if (id == SignalId::ANDROID_CHECK_MAPS || id == SignalId::ANDROID_CHECK_MOUNTS ||
         id == SignalId::ANDROID_CHECK_SELINUX || id == SignalId::ANDROID_CHECK_ROOT_PATHS ||
         id == SignalId::ANDROID_CHECK_PROPERTIES || id == SignalId::ANDROID_CHECK_DEBUGGER ||

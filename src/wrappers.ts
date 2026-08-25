@@ -148,6 +148,8 @@ const signalReasons: Record<string, string> = {
   'android.mount.magisk_chain': 'Mount metadata contains a layered root-overlay candidate.',
   'android.mount.denylist_unmount':
     'The app mount namespace shows the structural fingerprint of Magisk DenyList unmount cleanup (tmpfs overlays over system paths).',
+  'android.mount.overlayfs':
+    'An overlay filesystem is mounted over a system partition (modified system image — adb remount, GSI, or systemless-overlay root).',
   'ios.sandbox.write': 'A sandbox write to a restricted path succeeded.',
   'ios.check.sandbox': 'The sandbox write test did not complete within the time budget.',
   'android.check.selinux': 'The SELinux state check did not complete within the time budget.',

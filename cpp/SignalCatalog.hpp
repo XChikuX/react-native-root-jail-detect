@@ -228,6 +228,11 @@ namespace margelo::nitro::rootjaildetect {
     /// on legitimate multi-profile / scoped-storage setups.
     inline constexpr std::string_view ANDROID_MOUNT_DENYLIST_UNMOUNT =
       "android.mount.denylist_unmount";
+    /// An `overlay`/`overlayfs` super-block mounted over a canonical system
+    /// partition — never stock; indicates `adb remount` (unlocked bootloader),
+    /// GSI/DSU installs, or a systemless-overlay root setup.
+    inline constexpr std::string_view ANDROID_MOUNT_OVERLAYFS =
+      "android.mount.overlayfs";
   } // namespace SignalId
 
   // Basic compile-time string obfuscation for sensitive literals.

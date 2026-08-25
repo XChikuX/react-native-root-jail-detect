@@ -488,6 +488,8 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | low | `android.cmdline.magisk_exec` | 10 | `magisk` executable present in the process PATH |
 | low | `android.env.path_magisk` | 5 | Process PATH contains a candidate injected directory |
 | low | `android.mount.magisk_chain` | 5 | Layered suspicious mount candidate (hypothesis) |
+| medium | `android.mount.denylist_unmount` | 15 | Mount namespace shows the structural fingerprint of Magisk DenyList unmount cleanup (≥2 tmpfs overlays over system paths) |
+| medium | `android.mount.overlayfs` | 15 | `overlay`/`overlayfs` super-block mounted over a system partition (adb remount, GSI/DSU, or systemless-overlay root) |
 | informational | `android.debugger.tracerpid` | 0 | `TracerPid` non-zero (diagnostic) |
 | high | `ios.dyld.hook` | 30 | Suspicious injection framework loaded (Frida, MobileSubstrate, Substitute, libhooker, ellekit, rosalie, renamed gadgets) |
 | high | `ios.network.frida` | 30 | Frida server responding on loopback 27042 |

@@ -59,11 +59,11 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 - `cpp/IOSChecks.hpp` / `.cpp` — conservative iOS-only probes (jailbreak artifact paths, `_dyld` loaded-image scan, `sysctl` debugger state, simulator flag). Body compiled under `#if defined(__APPLE__)` so Android and host builds stay safe. Routes every signal through `SignalCatalog::lookupSignal()` so weights and severities never drift from the catalog.
 - `cpp/SignalCatalog.hpp` / `.cpp` — stable, public signal ids (`SignalId::*`) and their default severity/score weights, plus `lookupSignal(id)`. Signal ids are part of the public contract: callers and backends use them to reason about which checks fired, so they must never be renamed or reused for a different meaning once published. Weights mirror the risk table in the "Signal Catalog" section of `README.md`.
 - `cpp/Scoring.hpp` — header-only, side-effect-free aggregation (`aggregateSignals`) of fired signals into a clamped 0–100 score and a confidence level, with per-id deduplication so equivalent evidence is not double-counted.
-- `cpp/ProcParsers.hpp` / `.cpp` — pure, side-effect-free parsing of Linux `/proc` text formats (`/proc/self/maps`, `/proc/self/mountinfo`, `/proc/self/mounts`, `/proc/self/status`, `/sys/fs/selinux/enforce`) used by the Android path. It also parses anonymous executable mappings, Magisk `module.prop` documents, mount-chain candidates, and system-property inconsistencies. Every parser takes already-read file content and returns structured findings, so the logic is deterministic and unit-testable with fixture strings. `readFileIfExists` is the single impure entry point and never turns an unreadable file into a detection.
+- `cpp/ProcParsers.hpp` / `.cpp` — pure, side-effect-free parsing of Linux `/proc` text formats (`/proc/self/maps`, `/proc/self/mountinfo`, `/proc/self/mounts`, `/proc/self/status`, `/sys/fs/selinux/enforce`) used by the Android path. It also parses anonymous executable mappings, Magisk `module.prop` documents, mount-chain candidates, system-property inconsistencies, the Magisk DenyList unmount fingerprint, and overlay-filesystem-over-system-partition mounts (both via the shared `parseMountinfoLine()` helper, which locates fstype/source relative to the `-` separator since optional fields are variable-count). Every parser takes already-read file content and returns structured findings, so the logic is deterministic and unit-testable with fixture strings. `readFileIfExists` is the single impure entry point and never turns an unreadable file into a detection.
 - `cpp/AndroidProbes.hpp` / `.cpp` — Android-specific probes that require platform APIs: filesystem existence checks for root-manager directories, persistence markers, LSPosed caches, module manifests, hosts/system-directory writes, and `su` binaries (`stat(2)`); reads of Android system properties (`__system_property_get`); and bounded local command/PATH checks. Compiled under `#if defined(__ANDROID__)`; outside Android they return an empty set so the same files are safe in a host-side unit-test build.
 - `cpp/AndroidChecks.hpp` / `.cpp` — orchestrates the Android scored baseline and additive static/runtime probes: reads the relevant `/proc`/`/sys` files, runs the pure parsers, probes paths/properties/modules/packages, runs the loopback TCP probes via `TcpProbe`, and folds everything into a deduplicated list of `DetectionSignal`s plus the informational `debuggerDetected` flag. This is the only place that knows the full set of Android checks; `DeviceRiskAssessment.cpp` calls it under `#if defined(__ANDROID__)`. The PackageManager-enumeration block is Android-only and runs inside `facebook::jni::ThreadScope::WithClassLoader` (fbjni comes from the generated autolinking cmake): the checks execute on Nitro worker-pool threads and on the watchdog's raw `std::thread`, where JNI class lookup otherwise goes through the boot classloader and cannot resolve the app's Kotlin probe class.
 - `cpp/TcpProbe.hpp` / `.cpp` — loopback TCP probes used by both platforms to detect Frida server (27042), SSH (22/44), and ADB (emulator) responders. Pure C++ with a small RAII `TcpSocket` wrapper; takes short non-blocking connect timeouts and releases the fd on every path. Compiled on both platforms under `#if defined(__ANDROID__)` / `#elif defined(__APPLE__)` includes; defines `SOCK_CLOEXEC` to `0` when the iOS SDK lacks it (the flag is Linux-only and the sockets are short-lived, so the no-op define is safe).
-- `cpp/HybridUrlSchemeProbe.hpp` / `.cpp` — no-op C++ stub of the `UrlSchemeProbe` HybridObject, used on Android and any host build where URL-scheme probing is iOS-only. The real implementation is the Swift `HybridUrlSchemeProbe` class reached through the generated Swift-C++ bridge on iOS; `cpp/IOSChecks.cpp` calls `probe->canOpenUrl(scheme)` once per scheme rather than passing a `string[]` across the Swift boundary (see `TRIAGE.md` Issue 3 for the rationale — avoiding `std::vector` Sequence-conformance interop).
+- `cpp/HybridUrlSchemeProbe.hpp` / `.cpp` — no-op C++ stub of the `UrlSchemeProbe` HybridObject, used on Android and any host build where URL-scheme probing is iOS-only. The real implementation is the Swift `HybridUrlSchemeProbe` class reached through the generated Swift-C++ bridge on iOS; `cpp/IOSChecks.cpp` calls `probe->canOpenUrl(scheme)` once per scheme rather than passing a `string[]` across the Swift boundary (avoids `std::vector` Sequence-conformance interop).
 - `cpp/HybridPackageManagerProbe.hpp` / `.cpp` — no-op C++ stub of the `PackageManagerProbe` HybridObject, used on iOS and any host build where PackageManager queries are Android-only, and as the on-device fallback whenever the Kotlin edge cannot be reached (registry miss). The real implementation is the Kotlin `HybridPackageManagerProbe` edge class (`android/src/main/java/com/margelo/nitro/rootjaildetect/HybridPackageManagerProbe.kt`), reached through the generated Kotlin-C++ bridge on Android; `cpp/AndroidChecks.cpp` calls all three package-category methods once per pass. The stub's constructor explicitly calls `HybridObject(TAG)` — the generated spec inherits `HybridObject` **virtually**, so a defaulted constructor would invoke Nitro's intentionally throwing default `HybridObject()` and abort the process at the fallback construction site.
 
 ### Android
@@ -115,7 +115,7 @@ Consumer
 
 `DetectionSignal` carries extra context helpful for UI, analytics, and issue triage: `platform`, `category` (closed enum: `filesystem`, `sandbox`, `mount`, `process`, `injection`, `hook`, `property`, `package`, `signature`, `debugger` — source of truth `src/specs/SignalCategory.ts`), `detected`, and a `reliability` score `0..1`. Unavailable checks are represented as signals with `detected: false` and `unavailable: true`.
 
-**Implementation status:** the Android scored baseline lives in shared C++ — `/proc/self/maps` (library-name and executable-anonymous-mapping scans), `/proc/self/mountinfo` + `/proc/self/mounts` (root-artifact and mount-chain candidates), `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties plus property-consistency and Magisk-prop-leak cross-checks, custom-ROM/LineageOS markers, `/system/addon.d` and install-recovery persistence probes, Magisk `module.prop` tree enumeration, hosts writability, runtime instrumentation (Frida cmdline + local socket, `su`/`magisk` PATH lookups), PackageManager root/hiding/risky package enumeration, sandbox write probes, and `TracerPid` as informational. iOS Phase 1 checks (jailbreak artifact paths, `_dyld` loaded-image scan, `sysctl` debugger state, simulator flag) live in shared C++ at `cpp/IOSChecks.cpp`; the iOS-only `UrlSchemeProbe` (Swift edge, `ios/HybridUrlSchemeProbe.swift`) probes jailbreak-store URL schemes via `UIApplication.canOpenURL`, called one scheme at a time from `cpp/IOSChecks.cpp`. The security watchdog has its real background loop in `cpp/HybridSecurityWatchdog.cpp`. The C++ is not Windows-compilable — a Gradle build with the NDK must be run on macOS/Linux/WSL for native validation before publishing.
+**Implementation status:** the Android scored baseline lives in shared C++ — `/proc/self/maps` (library-name and executable-anonymous-mapping scans), `/proc/self/mountinfo` + `/proc/self/mounts` (root-artifact, mount-chain, Magisk DenyList-unmount fingerprint, and overlay-over-system-partition candidates), `/sys/fs/selinux/enforce`, root-manager paths, `su` binaries, build/verified-boot properties plus property-consistency and Magisk-prop-leak cross-checks, custom-ROM/LineageOS markers, `/system/addon.d` and install-recovery persistence probes, Magisk `module.prop` tree enumeration, hosts writability, runtime instrumentation (Frida cmdline + local socket, `su`/`magisk` PATH lookups), PackageManager root/hiding/risky package enumeration, sandbox write probes, and `TracerPid` as informational. iOS Phase 1 checks (jailbreak artifact paths, `_dyld` loaded-image scan, `sysctl` debugger state, simulator flag) live in shared C++ at `cpp/IOSChecks.cpp`; the iOS-only `UrlSchemeProbe` (Swift edge, `ios/HybridUrlSchemeProbe.swift`) probes jailbreak-store URL schemes via `UIApplication.canOpenURL`, called one scheme at a time from `cpp/IOSChecks.cpp`. The security watchdog has its real background loop in `cpp/HybridSecurityWatchdog.cpp`. The C++ is not Windows-compilable — a Gradle build with the NDK must be run on macOS/Linux/WSL for native validation before publishing.
 
 `isDeviceCompromised()` resolves to `result.compromised` (score >= configured `minScore`). It is intentionally broader than literal root/jailbreak detection — on both platforms it also includes selected Frida, hook, and low-level anti-debug/injection checks. Do not narrow or broaden this semantic accidentally; update documentation and both platforms when changing it.
 
@@ -350,7 +350,7 @@ xcodebuild \
   build
 ```
 
-Expected: `** BUILD SUCCEEDED **`. This was the command that produced the working build after fixing TRIAGE Issues 1–5.
+Expected: `** BUILD SUCCEEDED **`.
 
 ### Android build (Gradle + CMake + NDK)
 
@@ -398,6 +398,24 @@ in order of likelihood:
    `android/proguard-rules.pro`); the classes are looked up by name from C++.
 4. `System.loadLibrary("RootJailDetect")` failing — autolinking not applied in
    the host app (Expo prebuild or manual linking issues).
+
+Triage by timing: at import → load/autolinking; on first `checkDetailed()` →
+probe path (PackageManager JNI, iOS URL scheme); silent death seconds after
+start on a rooted/emulator device → watchdog `TERMINATE` working **by design**
+(retest with `LOG_ONLY`); release-only → R8.
+
+iOS main-thread deadlock: `canOpenUrl` uses `DispatchQueue.main.sync`; if the
+consumer blocks the main thread at startup, mitigate with
+`configure({ urlSchemes: { schemes: [] } })` or delay the first check.
+
+Markers: logcat `RootJailDetect: full native registration failed` (cpp-adapter
+fallback fired); Gradle `[NitroModules] 🔥 RootJailDetect is boosted by nitro!`
+(autolinking applied); watchdog logs `SecurityWatchdog detected a compromised
+device.` (LOG_ONLY) / `would throw` (demoted THROW_EXCEPTION).
+
+Fixed-in versions: v0.9.1 watchdog use-after-free + ProGuard keeps +
+cpp-adapter fallback; v0.9.2 PackageManagerProbe context fix; `206feb8`
+`consumer-rules.pro` bundled into the AAR.
 
 Note: `cpp/cpp-adapter.cpp` wraps the generated `registerAllNatives()` in a
 try/catch and re-registers the three pure-C++ HybridObjects individually on
@@ -525,6 +543,37 @@ version lands on npm:
 These hooks require the toolchain environment documented in "Native build
 commands" (Android SDK/JDK env vars for `release:android`; `DEVELOPER_DIR`
 for `pod install`), set in the shell that runs `bun run release`.
+
+## Detection policy & postmortems (consolidated 2026-08-25 from TRIAGE/HANDOFF/PLAN)
+
+### Signal severity policy
+- Evidence-backed signals ship at proposed weight; **hypothesis** signals ship low (5–10), raised only after clean-device FP fixtures; known-FP signals carry `reliability < 0.8`.
+- No new signal may be the sole basis for `compromised = true` until measured on device.
+- Signal ids are public contract: never rename/reuse; weight/severity tuning allowed.
+
+### Mountinfo parsing rules (`cpp/ProcParsers.cpp`)
+- Locate fstype/source **relative to the `-` separator** — optional fields (`shared`, `master`, `propagate_from`, `unbindable`) are variable-count; fixed column indices silently misparse (bug shipped once, caught in review).
+- `denylist_unmount` (medium 15): ≥2 **distinct** system paths with `tmpfs` fstype + magisk-named source — the DenyList unmount fingerprint; the only mount signal that survives DenyList.
+- `overlayfs` (medium 15): `overlay`/`overlayfs` over `/system|/vendor|/product|/system_ext|/odm|/oem` — never stock (adb remount, GSI/DSU, systemless overlay). Developer remount is "modified environment", not root proof, hence medium.
+
+### Deliberately not shipped
+- `android.selinux.spoofed` — circumstantial inference fires on legit custom ROMs.
+- `setprop` self-check (`props.writable_ro`) — unknown FP/FN profile.
+- Namespace diff via `/proc/1/mountinfo` — unreadable on stock Android (dead code); future reshape: `statx(2)` with `STATX_ATTR_MOUNT_ROOT`.
+- Abstract-socket probes (`@ksud`/`@apd`) — KernelSU moved su to a kernel supercall; Magisk's daemon socket is filesystem-backed under its randomized DenyList-hidden tmpdir; no verifiable ground truth.
+
+### Deferred (needs server — pairs with `enablePlayIntegrity`)
+- Play Integrity token acquisition, hardware key attestation, keybox revocation checks. Local keybox string matching is not guessable from device state.
+
+### Out of scope
+- Library self-hardening/anti-hook, out-of-process Frida gadgets, code obfuscation, server-side revocation lists.
+
+### External reference (reveny/Android-Native-Root-Detector)
+- Closed-source prebuilt `.so`; only UI labels (strings.xml) are public. DenyList-surviving vectors = structural mount fingerprints + HMA/risky packages — both covered here.
+
+### Open items
+- `package.json` peer range is open-ended `>=0.35.10` while README says `>=0.35.10 <0.37.0` and its compat table still says `~0.35.1` — align all three; cap `peerDependencies` at `<0.37.0` or document the resolved-version check.
+- On-device measurement of hypothesis signals on a rooted LineageOS device (example app): absence of hypothesis signals is not evidence of a clean device; if evidence-backed signals don't reach `minScore`, add signals — never inflate weights.
 
 ## Documentation and contribution requirements
 

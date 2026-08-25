@@ -118,6 +118,20 @@ namespace margelo::nitro::rootjaildetect {
     std::string_view initMountinfoContent
   ) noexcept;
 
+  /// Detect the Magisk DenyList unmount fingerprint in the app's own
+  /// mount namespace. Magisk's DenyList creates a per-app mount namespace,
+  /// unmounts every overlay it manages, and mounts `tmpfs` over the affected
+  /// system paths so the namespace is structurally consistent. The
+  /// characteristic signature — at least two system paths showing a
+  /// `tmpfs` super-block that mentions `magisk` — survives modern Magisk
+  /// versions that patch the legacy explicit-token leak. See
+  /// `Magisk#2406` and the `darvincitech/Detecting-Magisk-Hide` reference
+  /// for the underlying technique. Conservative dual-indicator gate to
+  /// avoid false positives on legitimately scoped-storage setups.
+  std::vector<ProcFinding> scanDenyListUnmountFingerprint(
+    std::string_view selfMountinfoContent
+  ) noexcept;
+
   /// Parse `TracerPid:` from `/proc/self/status` content. Returns `std::nullopt`
   /// when the field is absent or unparseable. A nonzero value means a tracer is
   /// attached; this is reported as an informational signal, not as compromise.

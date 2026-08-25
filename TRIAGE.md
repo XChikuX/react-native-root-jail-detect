@@ -160,11 +160,67 @@ Nitro's ThreadPool has **zero JVM attachment logic** (grep confirms no `ThreadSc
 
 ---
 
-## Files Modified
+## 2026-08-22 Addendum — Magisk DenyList detection signal
+
+**Context.** While validating the JVM-thread fix on the user's rooted OnePlus 9R (LineageOS 23.2), adding the app to Magisk's DenyList caused the score to drop from 95 → 15 (below `minScore: 40`). All explicit-artifact mount signals (`android.mount.magisk`, `android.addon_d.magisk`, `android.cmdline.{su_exec,magisk_exec}`, `android.mount.magisk_chain`) went silent. Investigation confirmed this is the documented behavior of DenyList: Magisk creates a per-app mount namespace, unmounts Magisk-managed overlays, and stabilizes with `tmpfs` mounts.
+
+**Research.** Confirmed upstream `Magisk#2406` (label `confirmed`) documents the namespace-divergence fingerprint — comparing the app's mountinfo against init's reveals mounts present in init but missing from the app. Also surveyed `darvincitech/Detecting-Magisk-Hide` (Magisk 20.1–20.3), the `mywalkb/DenylistUnmount` and `HSSkyBoy/NyaZygisk` Shamiko forks, and the DeepID 2026 magisk-detection guide. Consensus across sources: the *explicit-token* fingerprint was patched by Magisk 20.4; the *structural* fingerprint (`tmpfs` overlays over system paths) survives modern Magisk including Shamiko-aware forks.
+
+**Implementation.** New signal `android.mount.denylist_unmount` (Severity::MEDIUM, SignalCategory::MOUNT, score 15, reliability 0.55). The parser in `cpp/ProcParsers.cpp::scanDenyListUnmountFingerprint()` reads the app's own `/proc/self/mountinfo` and looks for lines matching all three indicators:
+  1. `tmpfs` filesystem type
+  2. mount point is one of `/system`, `/vendor`, `/product`, `/system_ext`, `/odm`, `/oem`
+  3. mount source mentions `magisk` (which also matches `core/magisk`)
+
+The filesystem type and source are located **relative to the `-` separator** (per `proc_pid_mountinfo(5)`), not by fixed column index — mountinfo lines carry a variable run of optional fields (`shared`, `master`, `propagate_from`, `unbindable`) before the separator, and fixed indices silently misparse any line with a propagation marker.
+
+Requires at least **two distinct matching paths** before reporting (dual-indicator gate) to avoid false positives on legitimate work-profile / scoped-storage setups that produce a single `tmpfs` overlay; duplicate mounts of the same path do not count toward the gate.
+
+**Why this is not the namespace-diff scan that already exists.** The existing `scanNamespaceOnlyMountArtifacts()` reads `/proc/1/mountinfo` for comparison — but PID 1 is hidden by SELinux on production Android, so that path returns empty. The new scan uses the app's *own* mountinfo for structural analysis, which is always readable.
+
+**Files modified (DenyList signal).**
+
+| File | Change |
+|------|--------|
+| `cpp/SignalCatalog.hpp` | Added `ANDROID_MOUNT_DENYLIST_UNMOUNT` id |
+| `cpp/SignalCatalog.cpp` | Catalog entry: severity MEDIUM, weight 15, reliability 0.55 |
+| `cpp/ProcParsers.hpp` | Declared `scanDenyListUnmountFingerprint()` |
+| `cpp/ProcParsers.cpp` | Implemented parser with dual-indicator gate |
+| `cpp/AndroidChecks.cpp` | Wired the scan into the mount-metadata stage |
+| `cpp/tests/ProcParsersTests.cpp` | Expanded into the suite entry point: comprehensive fixtures for every pure parser (maps hooks, anon injection, module props, property inconsistencies, mount artifacts, Magisk chain, namespace-only, TracerPid, SELinux) |
+| `cpp/tests/DenyListFingerprintTests.cpp` | Exhaustive DenyList fingerprint fixtures: positives (minimal, optional fields, case, CRLF, no trailing newline) and negatives (gate, distinct-path, non-system paths, non-tmpfs, options/super-options leakage, malformed lines) |
+| `cpp/tests/ScoringTests.cpp` | `aggregateSignals()` fixtures: dedup, availability filtering, clamping, and the full confidence ladder (LOW/MEDIUM/HIGH/EXTREME) |
+| `cpp/Scoring.hpp` | Host-test guard (`ROOTJAILDETECT_HOST_TEST`) mirroring `SignalCatalog.hpp` so aggregation is fixture-testable without Nitro headers |
+| `package.json` | `native-test` script now compiles `cpp/tests/*.cpp` |
+| `src/__tests__/index.test.tsx` | Jest coverage for the DenyList signal: catalog text, evidence preference, unavailable skip |
+| `src/wrappers.ts` | Added human-readable reason string |
+
+**Validation.**
+
+- `bun run native-test` — host-side suite passes: every pure parser + exhaustive DenyList fingerprint fixtures + `aggregateSignals()` scoring rules
+- `bun run typecheck`, `bun run lint`, `bun run test --maxWorkers=2` (45/45), `bun run build` — all pass
+
+**Final-review hardening (2026-08-25).** The initial parser located the filesystem type/source by fixed column index (`fields[7]`/`fields[8]`), which is only correct when a mountinfo line has *zero* optional fields. Verified against `proc_pid_mountinfo(5)`: optional fields (`shared`, `master`, `propagate_from`, `unbindable`) are variable-count, so any system mount carrying a propagation marker would have been silently misparsed and the signal would not fire. Reworked the parser to locate the `-` separator dynamically, enforced distinct-path deduplication to match the documented gate, and added regression fixtures for both behaviors.
+
+**Limitations (documented).**
+
+- A *fully* configured adversary (Magisk + Shamiko + HMA) can defeat this signal: Shamiko in Zygote can suppress the `tmpfs` overlay signature. This signal catches DenyList alone and DenyList + Shamiko's stock paths.
+- Should be paired with hardware-backed attestation (`@expo/app-integrity`) for high-assurance decisions, as documented in the README.
+
+---
+
+## Files Modified (this triage)
 
 | File | Change |
 |------|--------|
 | `cpp/AndroidChecks.cpp` | Added fbjni include + wrapped PackageManager section with `ThreadScope::WithClassLoader` |
+| `cpp/SignalCatalog.hpp` / `cpp/SignalCatalog.cpp` | New `ANDROID_MOUNT_DENYLIST_UNMOUNT` signal |
+| `cpp/ProcParsers.hpp` / `cpp/ProcParsers.cpp` | New `scanDenyListUnmountFingerprint()` parser |
+| `cpp/tests/ProcParsersTests.cpp` | Suite entry point + comprehensive parser fixtures |
+| `cpp/tests/DenyListFingerprintTests.cpp` | Exhaustive DenyList fingerprint fixtures |
+| `cpp/tests/ScoringTests.cpp` | `aggregateSignals()` scoring fixtures |
+| `cpp/Scoring.hpp` | Host-test guard for fixture builds |
+| `src/__tests__/index.test.tsx` | Jest coverage for the new signal reason |
+| `src/wrappers.ts` | Reason string for the new signal |
 
 ---
 

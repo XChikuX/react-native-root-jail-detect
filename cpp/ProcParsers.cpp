@@ -10,6 +10,7 @@
 #include <charconv>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 
@@ -474,6 +475,121 @@ namespace margelo::nitro::rootjaildetect {
       }
     }
     return findings;
+  }
+
+  std::vector<ProcFinding> scanDenyListUnmountFingerprint(
+    std::string_view selfMountinfoContent
+  ) noexcept {
+    // Reference technique: Magisk DenyList (and equivalents like KernelSU's umount
+    // modules) sanitize the app mount namespace by unmounting root-framework
+    // overlays and stabilizing the namespace with `tmpfs` mounts. The resulting
+    // structural fingerprint in `/proc/self/mountinfo` is:
+    //
+    //   <id> <parent> <maj:min> / <mountpoint> rw,... - tmpfs <source> <options>
+    //
+    // where <mountpoint> is a normally-block-device-backed system path and
+    // <source> carries a magisk identifier (historically "magisk" or
+    // "core/magisk", newer builds use randomized names, but the mount point
+    // coverage itself remains: a tmpfs over /system paths with matching
+    // propagation state). We track two independent indicators:
+    //   1. tmpfs mounted over a canonical system path
+    //   2. the mount line mentions a magisk identifier
+    // and require both, on at least two distinct paths, before reporting. This
+    // dual gate keeps legitimate single-tmpfs configurations (work profiles,
+    // scoped storage) out of the result while catching the cleanup pattern.
+    //
+    // Mountinfo format: "ID parent maj:min root mountpoint options [optional ...] - fstype source super_options"
+    // The mount point is always the 5th whitespace-delimited field (index 4).
+    // The filesystem type and mount source follow the literal `-` separator that
+    // terminates the optional-fields run, so they are located relative to that
+    // separator rather than by a fixed column index: optional fields
+    // (`shared`, `master`, `propagate_from`, `unbindable`) are optional and
+    // their count varies per line, so fixed indices would drift.
+    constexpr size_t kMountPointField = 4;
+
+    // Canonical system paths that are block-device-backed on stock Android.
+    constexpr std::string_view kSystemPaths[] = {
+      "/system", "/vendor", "/product", "/system_ext", "/odm", "/oem",
+    };
+
+    std::vector<std::string_view> matchedPaths;
+
+    size_t lineStart = 0;
+    while (lineStart <= selfMountinfoContent.size()) {
+      const size_t lineEnd = selfMountinfoContent.find('\n', lineStart);
+      const std::string_view line = selfMountinfoContent.substr(
+        lineStart,
+        (lineEnd == std::string_view::npos ? selfMountinfoContent.size() : lineEnd) - lineStart
+      );
+      if (!line.empty()) {
+        // Split into whitespace-separated fields. The optional-fields run makes
+        // each line variable-length, so collect into a dynamic vector instead of
+        // assuming a fixed field count.
+        std::vector<std::string_view> fields;
+        size_t pos = 0;
+        while (pos < line.size()) {
+          while (pos < line.size() &&
+                 std::isspace(static_cast<unsigned char>(line[pos]))) {
+            ++pos;
+          }
+          if (pos >= line.size()) {
+            break;
+          }
+          const size_t start = pos;
+          while (pos < line.size() &&
+                 !std::isspace(static_cast<unsigned char>(line[pos]))) {
+            ++pos;
+          }
+          fields.push_back(line.substr(start, pos - start));
+        }
+
+        if (fields.size() > kMountPointField) {
+          const std::string_view mountPoint = fields[kMountPointField];
+          // Locate the `-` separator; the filesystem type is the next field and
+          // the mount source the field after that.
+          size_t separator = kMountPointField + 1;
+          while (separator < fields.size() && fields[separator] != "-") {
+            ++separator;
+          }
+          if (separator + 2 < fields.size()) {
+            const std::string_view fsType = fields[separator + 1];
+            const std::string_view source = fields[separator + 2];
+            const bool isTmpfs = fsType == "tmpfs";
+            const bool isSystemPath = std::find_if(
+              std::begin(kSystemPaths), std::end(kSystemPaths),
+              [&mountPoint](std::string_view candidate) {
+                return mountPoint == candidate;
+              }
+            ) != std::end(kSystemPaths);
+            const bool mentionsMagisk = containsCI(source, "magisk");
+            if (isTmpfs && isSystemPath && mentionsMagisk) {
+              // Count distinct paths so two identical mounts of the same path
+              // cannot satisfy the dual-indicator gate on their own.
+              if (std::find(matchedPaths.begin(), matchedPaths.end(), mountPoint) ==
+                  matchedPaths.end()) {
+                matchedPaths.push_back(mountPoint);
+              }
+            }
+          }
+        }
+      }
+      if (lineEnd == std::string_view::npos) {
+        break;
+      }
+      lineStart = lineEnd + 1;
+    }
+
+    if (matchedPaths.size() >= 2) {
+      std::string evidence = "tmpfs-over-system-paths=";
+      for (size_t i = 0; i < matchedPaths.size(); ++i) {
+        if (i > 0) {
+          evidence.push_back(',');
+        }
+        evidence += matchedPaths[i];
+      }
+      return {ProcFinding{SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT, std::move(evidence)}};
+    }
+    return {};
   }
 
   std::optional<int> parseTracerPid(std::string_view statusContent) noexcept {

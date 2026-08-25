@@ -314,6 +314,7 @@ describe('@psync/anti-jailbreak wrappers', () => {
           'android.cmdline.magisk_exec',
           'android.env.path_magisk',
           'android.mount.magisk_chain',
+          'android.mount.denylist_unmount',
           'android.check.modules',
       ];
       mockCheckDetailed.mockResolvedValue(
@@ -378,6 +379,58 @@ describe('@psync/anti-jailbreak wrappers', () => {
         'A readable Magisk module tree contains module metadata.',
         'A Magisk persistence script was found under addon.d.',
       ]);
+    });
+
+    it('maps the Magisk DenyList unmount fingerprint to human-readable text', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [
+            stubSignal('android.mount.denylist_unmount', {
+              category: 'mount',
+              severity: 'medium',
+              score: 15,
+              reliability: 0.55,
+            }),
+          ],
+        })
+      );
+      await expect(getDetectionReasons()).resolves.toEqual([
+        'The app mount namespace shows the structural fingerprint of Magisk DenyList unmount cleanup (tmpfs overlays over system paths).',
+      ]);
+    });
+
+    it('prefers the redacted native evidence over the catalog text for the DenyList signal', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [
+            stubSignal('android.mount.denylist_unmount', {
+              category: 'mount',
+              severity: 'medium',
+              score: 15,
+              evidence: 'tmpfs-over-system-paths=/system,/vendor',
+            }),
+          ],
+        })
+      );
+      await expect(getDetectionReasons()).resolves.toEqual([
+        'tmpfs-over-system-paths=/system,/vendor',
+      ]);
+    });
+
+    it('skips the DenyList signal when it is marked unavailable', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [
+            stubSignal('android.mount.denylist_unmount', {
+              category: 'mount',
+              severity: 'medium',
+              score: 15,
+              unavailable: true,
+            }),
+          ],
+        })
+      );
+      await expect(getDetectionReasons()).resolves.toEqual([]);
     });
   });
 

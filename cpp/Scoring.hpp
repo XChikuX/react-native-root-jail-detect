@@ -18,9 +18,37 @@
 
 #pragma once
 
+#if defined(ROOTJAILDETECT_HOST_TEST)
+// Host-side fixture builds cannot resolve the nitrogen-generated headers
+// (they pull in NitroModules/jsi). Provide the minimal shape-agreeing stand-ins
+// so `aggregateSignals` stays fixture-testable. `SignalCatalog.hpp` defines
+// `Platform`, `Severity`, and `SignalCategory` under the same guard, so include
+// it first to keep the enum shapes aligned with the catalog.
+#include "SignalCatalog.hpp"
+
+#include <optional>
+#include <string>
+
+namespace margelo::nitro::rootjaildetect {
+  enum class Confidence { LOW, MEDIUM, HIGH, EXTREME };
+
+  struct DetectionSignal final {
+    std::string id;
+    Platform platform = Platform::ANDROID;
+    SignalCategory category = SignalCategory::FILESYSTEM;
+    Severity severity = Severity::LOW;
+    double score = 0.0;
+    bool detected = true;
+    double reliability = 0.5;
+    std::optional<std::string> evidence;
+    std::optional<bool> unavailable;
+  };
+} // namespace margelo::nitro::rootjaildetect
+#else
 #include "Confidence.hpp"
 #include "DetectionSignal.hpp"
 #include "SignalCategory.hpp"
+#endif
 
 #include <algorithm>
 #include <set>

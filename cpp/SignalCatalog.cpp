@@ -108,6 +108,15 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_CMDLINE_MAGISK_EXEC) return makeSpec(SignalId::ANDROID_CMDLINE_MAGISK_EXEC, Severity::LOW, SignalCategory::PROCESS, 10.0, 0.55);
     if (id == SignalId::ANDROID_ENV_PATH_MAGISK) return makeSpec(SignalId::ANDROID_ENV_PATH_MAGISK, Severity::LOW, SignalCategory::PROCESS, 5.0, 0.25);
     if (id == SignalId::ANDROID_MOUNT_MAGISK_CHAIN) return makeSpec(SignalId::ANDROID_MOUNT_MAGISK_CHAIN, Severity::LOW, SignalCategory::MOUNT, 5.0, 0.25);
+    // DenyList unmount fingerprint: lower weight than the explicit-mount signal
+    // because absence-of-mount is structurally more ambiguous than presence, and
+    // conservative scoring prevents false positives on devices that legitimately
+    // use scoped storage or work-profile isolation. The signal is intentionally
+    // MEDIUM severity: a DenyListed root framework is actively hiding from this
+    // app, which is stronger evidence than a low-confidence process artifact.
+    if (id == SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT) return makeSpec(
+      SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT, Severity::MEDIUM, SignalCategory::MOUNT, 15.0, 0.55
+    );
     if (id == SignalId::ANDROID_CHECK_MAPS || id == SignalId::ANDROID_CHECK_MOUNTS ||
         id == SignalId::ANDROID_CHECK_SELINUX || id == SignalId::ANDROID_CHECK_ROOT_PATHS ||
         id == SignalId::ANDROID_CHECK_PROPERTIES || id == SignalId::ANDROID_CHECK_DEBUGGER ||

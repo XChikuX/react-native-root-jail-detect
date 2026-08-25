@@ -185,16 +185,18 @@ Note the README compatibility matrix says `~0.35.1` while `package.json` says
 `>=0.35.10` — the README line is stale; trust `package.json` + the matrix
 notes.
 
-### H3 — R8/ProGuard in the consumer's release build (**confirmed repo gap**)
+### H3 — R8/ProGuard in the consumer's release build (**fixed in `206feb8`**)
 
 The library ships `android/proguard-rules.pro` with
-`-keep class com.margelo.nitro.rootjaildetect.** { *; }`, but
-`android/build.gradle` wires it via `proguardFiles` only — **there is no
-`consumerProguardFiles` declaration**, so the keep rules are **not embedded in
-the published AAR and do not apply to the consumer app's R8 pass**. A consumer
-release build with `minifyEnabled true` can rename or strip
-`HybridPackageManagerProbe` and the generated Kotlin specs (JNI looks them up
-by name).
+`-keep class com.margelo.nitro.rootjaildetect.** { *; }` **and** bundles
+`android/consumer-rules.pro` into the published AAR via
+`consumerProguardFiles 'consumer-rules.pro'` in `android/build.gradle`
+(added in `206feb8`). The keep rules therefore **do** propagate to the
+consumer app's R8 pass. (An earlier draft of this handoff flagged a missing
+`consumerProguardFiles` declaration; that gap was closed before this document
+was finalized.) A consumer release build with `minifyEnabled true` should no
+longer rename or strip `HybridPackageManagerProbe` and the generated Kotlin
+specs.
 
 The `cpp-adapter.cpp` fallback exists for exactly this (registration failure
 degrades to C++-only stubs — grep logcat for
@@ -207,11 +209,11 @@ consumer's rules strip something the fallback path itself needs
 — if `com.margelo.nitro.rootjaildetect.HybridPackageManagerProbe` maps to a
 renamed class, the rules never applied.
 
-**Fix (repo):** in `android/build.gradle`, add
-`consumerProguardFiles 'consumer-rules.pro'` (RN's template name) containing
-the keep rule, so published AARs propagate it. **This is action item #1 in §6
-regardless of this crash.** Consumers can meanwhile add the keep rule to their
-own `proguard-rules.pro`.
+**Status:** fixed in `206feb8` — `consumer-rules.pro` is wired via
+`consumerProguardFiles` and shipped in the AAR. Consumers on pre-`206feb8`
+versions can meanwhile add
+`-keep class com.margelo.nitro.rootjaildetect.** { *; }` to their own
+`proguard-rules.pro`.
 
 ### H4 — iOS: URL-scheme probe deadlocks the main thread
 
@@ -289,19 +291,15 @@ crash.
 ## 6. Repo-side action items (do regardless of this crash)
 
 1. **DONE: Fix detached-thread JNI in `runAndroidChecks()`** — Wrapped PackageManagerProbe calls with `ThreadScope::WithClassLoader` in `cpp/AndroidChecks.cpp`.
-2. **Add `consumerProguardFiles`** (H3): the published AAR must propagate the
-   keep rules to consumer R8 passes. One-line gradle change + a
-   `consumer-rules.pro`. **Confirmed gap found while preparing this handoff.**
-3. **Tighten or annotate the Nitro peer range** (H2): `>=0.35.10` silently
-   admits unverified 0.37+. Either cap at `<0.37.0-0` or document the resolved
-   version check prominently. Also fix the stale `~0.35.1` line in the README
-   compatibility intro.
-4. **Exercise the watchdog in the example app** (H6): add a `LOG_ONLY`
+2. **DONE: `consumerProguardFiles`** (H3, `206feb8`): `android/build.gradle`
+   now bundles `consumer-rules.pro` into the published AAR, so keep rules
+   propagate to consumer R8 passes.
+3. **Exercise the watchdog in the example app** (H6): add a `LOG_ONLY`
    start/stop/restart section to `example/src/App.tsx` so the background
    thread lifecycle has example coverage — it currently has none.
-5. **If H4 is confirmed:** make the iOS URL-scheme probe non-blocking (async
+4. **If H4 is confirmed:** make the iOS URL-scheme probe non-blocking (async
    probe or timeout) instead of `DispatchQueue.main.sync` from the worker.
-6. **Publish 0.9.3** with the audit fixes + this JNI fix after the iOS `xcodebuild` gate is
+5. **Publish 0.9.3** with the audit fixes + this JNI fix after the iOS `xcodebuild` gate is
    run (see `TRIAGE.md` follow-ups) — so consumers stop pulling pre-fix
    versions.
 

@@ -130,6 +130,14 @@ namespace margelo::nitro::rootjaildetect {
           includeEvidence
         );
         appendFindings(result.signals, scanMountsForMagiskChain(mountinfo.value_or("")), includeEvidence);
+        // DenyList fingerprint scan is independent of the explicit-artifact scans:
+        // when DenyList is active the explicit tokens are gone, but the namespace
+        // cleanup leaves the tmpfs-over-system-path structure this parser looks for.
+        appendFindings(
+          result.signals,
+          scanDenyListUnmountFingerprint(mountinfo.value_or("")),
+          includeEvidence
+        );
         if (mountinfo.has_value()) {
           if (auto initMountinfo = readFileIfExists(K_INIT_MOUNTINFO, deadline, 128 * 1024)) {
             appendFindings(result.signals,

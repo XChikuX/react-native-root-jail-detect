@@ -237,10 +237,13 @@ namespace margelo::nitro::rootjaildetect {
     // the literal `-` separator that terminates the variable-length
     // optional-fields run (`shared`, `master`, `propagate_from`, `unbindable`),
     // so they are located relative to that separator, never by fixed column.
+    // `superOptions` is the raw remainder after the source field (overlayfs
+    // `lowerdir=`/`upperdir=`/`workdir=` live there).
     struct MountinfoLine {
       std::string_view mountPoint;
       std::string_view fsType;
       std::string_view source;
+      std::string_view superOptions;
       bool valid = false;
     };
 
@@ -277,9 +280,55 @@ namespace margelo::nitro::rootjaildetect {
       if (separator + 2 < fields.size()) {
         parsed.fsType = fields[separator + 1];
         parsed.source = fields[separator + 2];
+        if (separator + 3 < fields.size()) {
+          // The super-options are everything from the first field after the
+          // source to the end of the line (joined as-is; separators within
+          // are commas, which the callers parse themselves).
+          parsed.superOptions = line.substr(
+            static_cast<size_t>(fields[separator + 3].data() - line.data())
+          );
+        }
         parsed.valid = true;
       }
       return parsed;
+    }
+
+    // Extract the value of a `key=` mount super-option. The value ends at the
+    // next unescaped comma (a `\,` sequence is libmount escaping for a literal
+    // comma inside the value, not an option separator).
+    std::string_view optionValue(std::string_view superOptions, std::string_view key) noexcept {
+      const size_t keyStart = superOptions.find(key);
+      if (keyStart == std::string_view::npos) {
+        return {};
+      }
+      const size_t valueStart = keyStart + key.size();
+      size_t end = valueStart;
+      while (end < superOptions.size()) {
+        if (superOptions[end] == ',' &&
+            (end == 0 || superOptions[end - 1] != '\\')) {
+          break;
+        }
+        ++end;
+      }
+      return superOptions.substr(valueStart, end - valueStart);
+    }
+
+    // Split a colon-separated overlayfs directory list (`lowerdir=/a:/b:/c`; the
+    // separator is `:` per kernel Documentation/filesystems/overlayfs.rst —
+    // Android system paths never contain colons). Empty components are dropped.
+    void splitOverlayDirs(std::string_view value, std::vector<std::string_view>& out) noexcept {
+      size_t start = 0;
+      while (start <= value.size()) {
+        const size_t colon = value.find(':', start);
+        const size_t end = colon == std::string_view::npos ? value.size() : colon;
+        if (end > start) {
+          out.push_back(value.substr(start, end - start));
+        }
+        if (colon == std::string_view::npos) {
+          break;
+        }
+        start = colon + 1;
+      }
     }
 
   } // namespace
@@ -530,23 +579,38 @@ namespace margelo::nitro::rootjaildetect {
   std::vector<ProcFinding> scanDenyListUnmountFingerprint(
     std::string_view selfMountinfoContent
   ) noexcept {
-    // Reference technique: Magisk DenyList (and equivalents like KernelSU's umount
-    // modules) sanitize the app mount namespace by unmounting root-framework
-    // overlays and stabilizing the namespace with `tmpfs` mounts. The resulting
-    // structural fingerprint in `/proc/self/mountinfo` is:
+    // Structural residue detector for unmount-style root hiding (Magisk
+    // DenyList and equivalents like KernelSU unmount modules).
     //
-    //   <id> <parent> <maj:min> / <mountpoint> rw,... - tmpfs <source> <options>
+    // What the evidence supports (verified against Magisk master, Aug 2026):
+    // modern Magisk v24+ `revert_unmount()` (native/src/core/mount.rs, invoked
+    // post-`unshare(CLONE_NEWNS)` under DO_REVERT_UNMOUNT) unmounts every
+    // mount whose source is "magisk" or whose root starts with /adb/modules —
+    // *including* the Magisk tmpfs itself. A correctly cleaned modern
+    // namespace therefore contains zero magisk-token lines; this signal is an
+    // expected no-fire there and must never be marketed as DenyList-proof.
     //
-    // where <mountpoint> is a normally-block-device-backed system path and
-    // <source> carries a magisk identifier (historically "magisk" or
-    // "core/magisk", newer builds use randomized names, but the mount point
-    // coverage itself remains: a tmpfs over /system paths with matching
-    // propagation state). We track two independent indicators:
-    //   1. tmpfs mounted over a canonical system path
-    //   2. the mount line mentions a magisk identifier
-    // and require both, on at least two distinct paths, before reporting. This
-    // dual gate keeps legitimate single-tmpfs configurations (work profiles,
-    // scoped storage) out of the result while catching the cleanup pattern.
+    // What actually leaves a fingerprint:
+    //   Indicator A (structural residue) — >= 2 *distinct* canonical system
+    //   paths mounted as `tmpfs`, regardless of source. Old MagiskHide left
+    //   tmpfs "stoppers"; incomplete modern cleanups (EBUSY inner unmounts),
+    //   third-party unmount modules, and Magisk forks (Kitsune) leave the
+    //   same shape with whatever source string they used — including
+    //   randomized ones, which is why the source token is no longer required.
+    //   Stock Android backs these six paths with block devices (ext4/erofs/
+    //   f2fs), and stock tmpfs targets (work profiles, scoped storage, /apex,
+    //   /dev) live outside the allowlist, so the >=2-distinct exact-match
+    //   gate is the false-positive guard.
+    //   Indicator B (surviving artifacts) — any line still carrying a magisk
+    //   token (source, /adb/modules root, .magisk mirror path). B alone never
+    //   fires here: explicit-artifact signals already cover visible mounts at
+    //   higher weights, and double-counting the same evidence would inflate
+    //   the score. B only enriches the evidence when A fires ("partial cleanup
+    //   of an otherwise visible framework").
+    //
+    // Weight is LOW/5 (hypothesis class, reliability 0.40) until the
+    // on-device measurement program records clean-corpus fixtures and a
+    // reproducible true positive; see the detection policy in CLAUDE.md.
     //
     // Mountinfo format: "ID parent maj:min root mountpoint options [optional ...] - fstype source super_options"
     // Field parsing is delegated to `parseMountinfoLine` (see the anonymous
@@ -560,6 +624,7 @@ namespace margelo::nitro::rootjaildetect {
     };
 
     std::vector<std::string_view> matchedPaths;
+    bool residualMagiskArtifacts = false;
 
     size_t lineStart = 0;
     while (lineStart <= selfMountinfoContent.size()) {
@@ -569,6 +634,13 @@ namespace margelo::nitro::rootjaildetect {
         (lineEnd == std::string_view::npos ? selfMountinfoContent.size() : lineEnd) - lineStart
       );
       if (!line.empty()) {
+        // Indicator B: a surviving magisk artifact anywhere on the line. Checked
+        // on the raw line so malformed-but-informative lines still count as
+        // residue; it can only enrich evidence, never fire on its own.
+        if (containsCI(line, "magisk") || containsCI(line, "/adb/modules") ||
+            containsCI(line, ".magisk")) {
+          residualMagiskArtifacts = true;
+        }
         const MountinfoLine parsed = parseMountinfoLine(line);
         if (parsed.valid) {
           const bool isTmpfs = parsed.fsType == "tmpfs";
@@ -578,10 +650,9 @@ namespace margelo::nitro::rootjaildetect {
               return parsed.mountPoint == candidate;
             }
           ) != std::end(kSystemPaths);
-          const bool mentionsMagisk = containsCI(parsed.source, "magisk");
-          if (isTmpfs && isSystemPath && mentionsMagisk) {
+          if (isTmpfs && isSystemPath) {
             // Count distinct paths so two identical mounts of the same path
-            // cannot satisfy the dual-indicator gate on their own.
+            // cannot satisfy the structural gate on their own.
             if (std::find(matchedPaths.begin(), matchedPaths.end(), parsed.mountPoint) ==
                 matchedPaths.end()) {
               matchedPaths.push_back(parsed.mountPoint);
@@ -603,6 +674,9 @@ namespace margelo::nitro::rootjaildetect {
         }
         evidence += matchedPaths[i];
       }
+      if (residualMagiskArtifacts) {
+        evidence += ";residual-magisk-artifacts";
+      }
       return {ProcFinding{SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT, std::move(evidence)}};
     }
     return {};
@@ -612,17 +686,47 @@ namespace margelo::nitro::rootjaildetect {
     // An `overlay`/`overlayfs` super-block mounted over a canonical system
     // partition means the system image has been overlaid: `adb remount` on an
     // unlocked bootloader, GSI/DSU installs, or a systemless-overlay root
-    // setup. Stock production builds back these partitions with erofs/ext4/
-    // f2fs, so an overlay on one of them is never stock. Reported at MEDIUM
-    // weight (not HIGH like an explicit Magisk artifact) because a developer
-    // remount is "modified environment" rather than proof of a root framework;
-    // a single match is enough because one overlaid system partition is
-    // already meaningful.
+    // setup (KernelSU/APatch meta-overlayfs modules commonly overlay at `/`,
+    // which this exact-root rule intentionally does not match).
+    //
+    // "Never stock" is FALSE as an absolute claim: stock Xiaomi HyperOS/MIUI
+    // ships OEM resource-layering overlays backed by /mnt/vendor/mi_ext and
+    // /product/pangu (fstab evidence, Aug 2026; also AnyCheck issue #19,
+    // 2026-06-28). Two rules keep those devices out:
+    //   1. Subpath mountpoints (/system/app, /product/overlay, ...) never fire
+    //      — the exact-partition-root rule. This is a documented decision, not
+    //      an accident: the Xiaomi corpus motivates it.
+    //   2. When backing directories ARE inspectable (lowerdir/upperdir/workdir
+    //      in super-options), overlays backed *entirely* by known OEM
+    //      prefixes are suppressed. The suppression list is fail-closed
+    //      toward fewer detections; additions require a real-device corpus
+    //      sample (see kOemBackingPrefixes).
+    //
+    // Classification when it does fire:
+    //   - any user-writable-backed component (/data, /storage, /sdcard) →
+    //     strongest form (meta-module / overlayfs-module root), flagged in
+    //     the evidence as `;user-writable-backing`;
+    //   - block/vendor-backed or uninspectable super-options → developer
+    //     remount / GSI class.
+    // Both fire the same signal id at MEDIUM weight ("modified environment",
+    // not root proof); a single match is enough because one overlaid system
+    // partition is already meaningful. Weight is 10 (reliability 0.55) until
+    // the on-device measurement program signs off; see CLAUDE.md policy.
     constexpr std::string_view kSystemPaths[] = {
       "/system", "/vendor", "/product", "/system_ext", "/odm", "/oem",
     };
+    // Suppression-only OEM backing prefixes. Additions REQUIRE a real-device
+    // corpus sample; never add speculatively.
+    static constexpr std::string_view kOemBackingPrefixes[] = {
+      "/mnt/vendor/mi_ext/", // Xiaomi HyperOS/MIUI dynamic-resource delivery
+      "/product/pangu/",     // Xiaomi OEM resource layering
+    };
+    static constexpr std::string_view kUserWritablePrefixes[] = {
+      "/data/", "/storage/", "/sdcard/",
+    };
 
-    std::vector<std::string> matchedPaths;
+    std::vector<std::string_view> matchedPaths;
+    bool userWritableBacking = false;
 
     size_t lineStart = 0;
     while (lineStart <= mountinfoContent.size()) {
@@ -642,7 +746,51 @@ namespace margelo::nitro::rootjaildetect {
             }
           ) != std::end(kSystemPaths);
           if (isSystemPath) {
-            matchedPaths.emplace_back(parsed.mountPoint);
+            // Classify by backing when the overlay exposes its directories.
+            std::vector<std::string_view> components;
+            splitOverlayDirs(optionValue(parsed.superOptions, "lowerdir="), components);
+            components.push_back(optionValue(parsed.superOptions, "upperdir="));
+            components.push_back(optionValue(parsed.superOptions, "workdir="));
+            // Drop absent keys (empty extractions).
+            std::erase_if(components, [](std::string_view component) {
+              return component.empty();
+            });
+            bool oemSuppressed = false;
+            if (!components.empty()) {
+              oemSuppressed = std::all_of(
+                components.begin(), components.end(),
+                [](std::string_view component) {
+                  return std::any_of(
+                    std::begin(kOemBackingPrefixes), std::end(kOemBackingPrefixes),
+                    [component](std::string_view prefix) {
+                      return component.starts_with(prefix);
+                    }
+                  );
+                }
+              );
+              if (!oemSuppressed) {
+                userWritableBacking = userWritableBacking || std::any_of(
+                  components.begin(), components.end(),
+                  [](std::string_view component) {
+                    return std::any_of(
+                      std::begin(kUserWritablePrefixes), std::end(kUserWritablePrefixes),
+                      [component](std::string_view prefix) {
+                        return component.starts_with(prefix);
+                      }
+                    );
+                  }
+                );
+              }
+            }
+            // Stock OEM resource layering is a non-finding by design; every
+            // other exact-root overlay fires. Deduplicate: stacked overlays of
+            // the same path are one finding (mirrors the DenyList scanner's
+            // distinct-path handling).
+            if (!oemSuppressed &&
+                std::find(matchedPaths.begin(), matchedPaths.end(), parsed.mountPoint) ==
+                  matchedPaths.end()) {
+              matchedPaths.push_back(parsed.mountPoint);
+            }
           }
         }
       }
@@ -659,6 +807,9 @@ namespace margelo::nitro::rootjaildetect {
           evidence.push_back(',');
         }
         evidence += matchedPaths[i];
+      }
+      if (userWritableBacking) {
+        evidence += ";user-writable-backing";
       }
       return {ProcFinding{SignalId::ANDROID_MOUNT_OVERLAYFS, std::move(evidence)}};
     }

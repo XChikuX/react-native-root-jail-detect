@@ -130,17 +130,20 @@ namespace margelo::nitro::rootjaildetect {
           includeEvidence
         );
         appendFindings(result.signals, scanMountsForMagiskChain(mountinfo.value_or("")), includeEvidence);
-        // DenyList fingerprint scan is independent of the explicit-artifact scans:
-        // when DenyList is active the explicit tokens are gone, but the namespace
-        // cleanup leaves the tmpfs-over-system-path structure this parser looks for.
+        // Structural-residue scan is independent of the explicit-artifact scans:
+        // unmount-style hiding (Magisk DenyList, KSU unmount modules) removes the
+        // explicit tokens; incomplete cleanups leave tmpfs over canonical system
+        // paths with whatever source they used (incl. randomized). A fully
+        // successful modern cleanup leaves nothing — this signal is an expected
+        // no-fire there (see the comment in scanDenyListUnmountFingerprint).
         appendFindings(
           result.signals,
           scanDenyListUnmountFingerprint(mountinfo.value_or("")),
           includeEvidence
         );
-        // Overlay filesystem over a canonical system partition (adb remount,
-        // GSI/DSU, systemless-overlay root). Independent of the explicit-token
-        // and DenyList scans; fires even when no magisk identifier is visible.
+        // Overlay filesystem over an exact canonical system-partition root (adb
+        // remount, GSI/DSU, systemless-overlay root). OEM-backed overlays are
+        // suppressed inside the scanner (Xiaomi HyperOS/MIUI resource layering).
         appendFindings(
           result.signals,
           scanMountsForOverlayFs(mountinfo.value_or("")),

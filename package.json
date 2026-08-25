@@ -119,6 +119,7 @@
   "name": "@psync/anti-jailbreak",
   "packageManager": "bun@1.3.14",
   "peerDependencies": {
+    "@expo/config-plugins": "*",
     "react": "*",
     "react-native": "*",
     "react-native-nitro-modules": ">=0.35.10"

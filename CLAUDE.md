@@ -553,8 +553,9 @@ for `pod install`), set in the shell that runs `bun run release`.
 
 ### Mountinfo parsing rules (`cpp/ProcParsers.cpp`)
 - Locate fstype/source **relative to the `-` separator** — optional fields (`shared`, `master`, `propagate_from`, `unbindable`) are variable-count; fixed column indices silently misparse (bug shipped once, caught in review).
-- `denylist_unmount` (medium 15): ≥2 **distinct** system paths with `tmpfs` fstype + magisk-named source — the DenyList unmount fingerprint; the only mount signal that survives DenyList.
-- `overlayfs` (medium 15): `overlay`/`overlayfs` over `/system|/vendor|/product|/system_ext|/odm|/oem` — never stock (adb remount, GSI/DSU, systemless overlay). Developer remount is "modified environment", not root proof, hence medium.
+- `denylist_unmount` (low 5, rel 0.40, hypothesis): ≥ 2 **distinct** canonical system paths with `tmpfs` fstype, **any** source (v0.13.0 rework). Modern official Magisk v24+ `revert_unmount()` cleans fully → honest expected-FN; realistic TPs are legacy MagiskHide, Kitsune-style forks, unmount modules, `EBUSY` partial cleanups. Surviving magisk tokens only append `;residual-magisk-artifacts` to the evidence (never fire alone — visible artifacts are the explicit-mount signal's domain). Do **not** market as DenyList-proof.
+- `overlayfs` (medium 10, rel 0.55): `overlay`/`overlayfs` at an **exact** partition root only. Classification: user-writable backing (`/data|/storage|/sdcard`) → `;user-writable-backing` evidence flag (meta-module class); block/vendor-backed or uninspectable → remount/GSI class; **fully** OEM-backed → suppressed (`kOemBackingPrefixes`: `/mnt/vendor/mi_ext/`, `/product/pangu/` — additions require a real-device corpus sample). Stock Xiaomi HyperOS/MIUI ships OEM overlays at **subpaths** — subpath mounts never fire by design (documented decision, not an accident).
+- `magisk_chain` (low 5, hypothesis) counts any `overlay` line, so stock Xiaomi OEM layering can co-fire it; acceptable at hypothesis weight — do not raise without OEM corpus fixtures.
 
 ### Deliberately not shipped
 - `android.selinux.spoofed` — circumstantial inference fires on legit custom ROMs.
@@ -569,11 +570,12 @@ for `pod install`), set in the shell that runs `bun run release`.
 - Library self-hardening/anti-hook, out-of-process Frida gadgets, code obfuscation, server-side revocation lists.
 
 ### External reference (reveny/Android-Native-Root-Detector)
-- Closed-source prebuilt `.so`; only UI labels (strings.xml) are public. DenyList-surviving vectors = structural mount fingerprints + HMA/risky packages — both covered here.
+- Closed-source prebuilt `.so`; only UI labels (strings.xml) are public. DenyList-surviving vectors claimed there = structural mount fingerprints + HMA/risky packages; note the structural-fingerprint claim only holds for *incomplete* cleanups against modern Magisk (see `denylist_unmount` above).
 
 ### Open items
-- `package.json` peer range is open-ended `>=0.35.10` while README says `>=0.35.10 <0.37.0` and its compat table still says `~0.35.1` — align all three; cap `peerDependencies` at `<0.37.0` or document the resolved-version check.
 - On-device measurement of hypothesis signals on a rooted LineageOS device (example app): absence of hypothesis signals is not evidence of a clean device; if evidence-backed signals don't reach `minScore`, add signals — never inflate weights.
+- Weight recovery gates (WS-F of the v0.13 remediation): `denylist_unmount` (5) and `overlayfs` (10) may only rise after zero clean-corpus FPs **and** ≥1 reproducible TP fixture (Magisk/Kitsune partial cleanup; KSU/APatch root-level overlays; adb-remount/GSI) are committed. Clean-corpus fixtures live in `cpp/tests/MountCorpusTests.cpp`.
+- Optional diagnostics screen in the example app (dumps raw matching mountinfo lines, share-sheet export, watchdog `LOG_ONLY` only) to feed the corpus from volunteer devices.
 
 ## Documentation and contribution requirements
 

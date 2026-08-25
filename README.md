@@ -27,8 +27,8 @@ bun add @psync/anti-jailbreak react-native-nitro-modules
 
 | `react-native-nitro-modules` | Status | Notes |
 | --- | --- | --- |
-| `< 0.35.1` | ❌ Not supported | `HybridObject` virtuals differ; outside the `~0.35.1` peer range. |
-| `0.35.x` (`~0.35.1`) | ✅ Supported (current) | Current peerDependency range. `HybridObject::getExternalMemorySize()` is the override target; do **not** use the legacy `getMemorySize()` name. |
+| `< 0.35.0` | ❌ Not supported | `HybridObject` virtuals differ; outside the peer range. |
+| `0.35.0` – `0.35.x` | ✅ Supported | `HybridObject::getExternalMemorySize()` is the override target; do **not** use the legacy `getMemorySize()` name. |
 | `0.36.x` | ✅ Supported | Same `HybridObject::getExternalMemorySize()` API; verified against `0.36.1`. No code changes required. |
 | `0.37.x` and above | ⚠️ Unverified | Not yet validated. Re-run `bun run specs` and a clean native build (iOS pod build + Android Gradle `clean`) before adopting, since NitroModules may rename or remove `HybridObject` virtuals again. |
 
@@ -37,7 +37,7 @@ bun add @psync/anti-jailbreak react-native-nitro-modules
 ### iOS & Expo
 
 - **iOS:** Run `cd ios && pod install`
-- **Expo:** Custom dev client or EAS Build required (cannot run in Expo Go). The package ships an Expo config plugin (`app.plugin.js`) that adds narrowly scoped `<queries>` entries for known root-manager apps on Android; it is wired automatically, but can be referenced explicitly with `plugins: ["@psync/anti-jailbreak"]` in `app.json` if package plugins are not auto-resolved. `@expo/config-plugins` is an optional peer (declared in `peerDependenciesMeta`); Expo prebuild always provides it as a transitive dependency of `expo`.
+- **Expo:** Custom dev client or EAS Build required (cannot run in Expo Go). The package ships an Expo config plugin (`app.plugin.js`) that adds narrowly scoped `<queries>` entries for known root-manager apps on Android; it is wired automatically, but can be referenced explicitly with `plugins: ["@psync/anti-jailbreak"]` in `app.json` if package plugins are not auto-resolved. `@expo/config-plugins` is an optional peer (listed in `peerDependencies` and marked optional via `peerDependenciesMeta`, so npm surfaces it without requiring installation); Expo prebuild always provides it as a transitive dependency of `expo`.
 
 ---
 
@@ -488,8 +488,8 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | low | `android.cmdline.magisk_exec` | 10 | `magisk` executable present in the process PATH |
 | low | `android.env.path_magisk` | 5 | Process PATH contains a candidate injected directory |
 | low | `android.mount.magisk_chain` | 5 | Layered suspicious mount candidate (hypothesis) |
-| medium | `android.mount.denylist_unmount` | 15 | Mount namespace shows the structural fingerprint of Magisk DenyList unmount cleanup (≥2 tmpfs overlays over system paths) |
-| medium | `android.mount.overlayfs` | 15 | `overlay`/`overlayfs` super-block mounted over a system partition (adb remount, GSI/DSU, or systemless-overlay root) |
+| low | `android.mount.denylist_unmount` | 5 | ≥ 2 distinct canonical system partitions mounted as `tmpfs` — structural residue of unmount-style root hiding (hypothesis; see limitations below) |
+| medium | `android.mount.overlayfs` | 10 | `overlay`/`overlayfs` at an exact system-partition root, not stock-OEM-backed (adb remount, GSI/DSU, systemless-overlay root; see limitations below) |
 | informational | `android.debugger.tracerpid` | 0 | `TracerPid` non-zero (diagnostic) |
 | high | `ios.dyld.hook` | 30 | Suspicious injection framework loaded (Frida, MobileSubstrate, Substitute, libhooker, ellekit, rosalie, renamed gadgets) |
 | high | `ios.network.frida` | 30 | Frida server responding on loopback 27042 |
@@ -519,6 +519,8 @@ The Android PackageManager lists are subject to Android package visibility and t
 - **Renamed Frida gadgets:** Memory-map and `_dyld` scans include common rename patterns (`libgadget`, `gadget.dylib`, etc.), but a determined attacker can rename further. Treat these as defensive signals, not proof.
 - **iOS URL schemes:** The default probe list (`cydia`, `sileo`, `zbra`, `filza`) respects the 50-entry `LSApplicationQueriesSchemes` cap shared with the host app. Configure `RootJailDetectOptions.urlSchemes.schemes` to change or disable the list. Undeclared schemes safely return `NO` and never produce a false positive.
 - **Confidence levels:** `low`/`medium`/`high` reflect how complete and convergent the pass was. `extreme` is reserved by the aggregator for combinations of multiple high-severity, independent-category signals that together push the score very high (≈ 80).
+- **Modern Magisk DenyList caveat:** a *correctly functioning* Magisk v24+ DenyList (`revert_unmount`) removes every framework mount — including its own tmpfs — from the denied app's namespace, so `android.mount.denylist_unmount` is an expected no-fire there. The signal catches legacy MagiskHide, Magisk forks (e.g. Kitsune), third-party unmount modules, and partial cleanups (`EBUSY`). It is not DenyList-proof and ships at low hypothesis weight pending on-device measurement.
+- **Stock OEM overlay caveat:** stock Xiaomi HyperOS/MIUI devices ship `overlay` mounts as part of their OEM resource layering (backed by `/mnt/vendor/mi_ext` and `/product/pangu`, typically at subpaths such as `/system/app`). The `android.mount.overlayfs` scanner only matches exact partition roots and suppresses fully OEM-backed overlays; the suppression list is deliberately small and grows only with real-device evidence. Other OEMs layering overlays at partition roots in the future would be reported — report such devices so the corpus can grow.
 
 ---
 

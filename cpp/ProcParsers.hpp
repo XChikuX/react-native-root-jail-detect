@@ -118,29 +118,38 @@ namespace margelo::nitro::rootjaildetect {
     std::string_view initMountinfoContent
   ) noexcept;
 
-  /// Detect the Magisk DenyList unmount fingerprint in the app's own
-  /// mount namespace. Magisk's DenyList creates a per-app mount namespace,
-  /// unmounts every overlay it manages, and mounts `tmpfs` over the affected
-  /// system paths so the namespace is structurally consistent. The
-  /// characteristic signature — at least two system paths showing a
-  /// `tmpfs` super-block that mentions `magisk` — survives modern Magisk
-  /// versions that patch the legacy explicit-token leak. See
-  /// `Magisk#2406` and the `darvincitech/Detecting-Magisk-Hide` reference
-  /// for the underlying technique. Conservative dual-indicator gate to
-  /// avoid false positives on legitimately scoped-storage setups.
+  /// Detect the structural residue of unmount-style root hiding (Magisk
+  /// DenyList and equivalents) in the app's own mount namespace. Fires when
+  /// at least two *distinct* canonical system partitions are mounted as
+  /// `tmpfs`, regardless of mount source: old MagiskHide left tmpfs
+  /// "stoppers", and incomplete modern cleanups (EBUSY, forks, third-party
+  /// unmount modules) leave the same shape with randomized sources. A
+  /// correctly functioning modern Magisk v24+ `revert_unmount()` removes
+  /// every framework mount, so this signal is an expected no-fire there —
+  /// it is NOT DenyList-proof and ships at LOW/hypothesis weight pending
+  /// on-device measurement. Surviving magisk tokens on any line only enrich
+  /// the evidence (`;residual-magisk-artifacts`) and never fire on their own;
+  /// visible artifacts are the explicit-mount signal's domain. The
+  /// >=2-distinct-paths exact-match gate is the false-positive guard against
+  /// legitimate scoped-storage / work-profile tmpfs mounts (which live
+  /// outside the six-path allowlist).
   std::vector<ProcFinding> scanDenyListUnmountFingerprint(
     std::string_view selfMountinfoContent
   ) noexcept;
 
-  /// Detect an `overlay`/`overlayfs` super-block mounted over a canonical
-  /// system partition (`/system`, `/vendor`, `/product`, `/system_ext`, `/odm`,
-  /// `/oem`). Stock production builds back these partitions with erofs/ext4/
-  /// f2fs, so an overlay over one of them is never stock — it indicates
-  /// `adb remount` on an unlocked bootloader, a GSI/DSU install, or a
-  /// systemless-overlay root setup. A single match is reported (one overlaid
-  /// system partition is already meaningful); severity is MEDIUM rather than
-  /// HIGH because a developer remount is "modified environment" without proof
-  /// of a root framework.
+  /// Detect an `overlay`/`overlayfs` super-block mounted over an exact
+  /// canonical system-partition root (`/system`, `/vendor`, `/product`,
+  /// `/system_ext`, `/odm`, `/oem`) — `adb remount` on an unlocked bootloader,
+  /// a GSI/DSU install, or a systemless-overlay root setup. Not
+  /// "never stock": stock Xiaomi HyperOS/MIUI ships OEM resource-layering
+  /// overlays backed by `/mnt/vendor/mi_ext` and `/product/pangu`, so (1)
+  /// subpath mountpoints (`/system/app`, ...) never fire by design, and (2)
+  /// overlays whose every lowerdir/upperdir/workdir component carries a known
+  /// OEM backing prefix are suppressed. When backing directories are
+  /// user-writable (`/data`, `/storage`, `/sdcard`) the evidence is flagged
+  /// `;user-writable-backing` (meta-module / overlayfs-module root class).
+  /// Severity is MEDIUM ("modified environment", not root proof); weight 10
+  /// until on-device measurement signs off. Evidence paths are deduplicated.
   std::vector<ProcFinding> scanMountsForOverlayFs(std::string_view mountinfoContent) noexcept;
 
   /// Parse `TracerPid:` from `/proc/self/status` content. Returns `std::nullopt`

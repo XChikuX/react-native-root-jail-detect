@@ -5,9 +5,11 @@
 /// `bun run native-test` with `-DROOTJAILDETECT_HOST_TEST`, which swaps the
 /// nitrogen-generated enums for shape-agreeing stand-ins (see
 /// `SignalCatalog.hpp` / `Scoring.hpp`). This file owns `main()` and delegates
-/// the two larger sub-suites:
+/// the larger sub-suites:
 ///   - `runDenyListFingerprintTests()` (DenyListFingerprintTests.cpp)
-///   - `runScoringTests()`               (ScoringTests.cpp)
+///   - `runOverlayFsTests()`          (OverlayFsTests.cpp)
+///   - `runMountCorpusTests()`        (MountCorpusTests.cpp)
+///   - `runScoringTests()`            (ScoringTests.cpp)
 ///
 
 #include "ProcParsers.hpp"
@@ -19,6 +21,8 @@
 using namespace margelo::nitro::rootjaildetect;
 
 void runDenyListFingerprintTests();
+void runOverlayFsTests();
+void runMountCorpusTests();
 void runScoringTests();
 
 int main() {
@@ -341,59 +345,9 @@ int main() {
   assert(parseSelinuxEnforce("x") == std::nullopt);
   assert(parseSelinuxEnforce("") == std::nullopt);
 
-  // ---- Mount metadata: overlay filesystem over system partitions -----------
-  // An `overlay` super-block over /system is never stock (adb remount, GSI,
-  // systemless-overlay root). A single match is enough.
-  {
-    constexpr std::string_view mountinfo =
-      "36 30 0:1 / / rw,relatime master:1 - ext4 /dev/block/dm-0\n"
-      "37 30 0:2 / /system rw,relatime - overlay overlay rw,lowerdir=/a:/b\n"
-      "38 30 0:3 / /data rw,relatime - ext4 /dev/block/dm-3\n";
-    const auto findings = scanMountsForOverlayFs(mountinfo);
-    assert(findings.size() == 1);
-    assert(findings.front().signalId == SignalId::ANDROID_MOUNT_OVERLAYFS);
-    assert(findings.front().evidence == "overlay-over-system-paths=/system");
-  }
-
-  // Both `overlay` and `overlayfs` spellings, with optional fields shifting
-  // the separator; multiple paths are all listed in the evidence.
-  {
-    constexpr std::string_view mountinfo =
-      "37 30 0:2 / /system rw,relatime shared:1 - overlay overlay rw\n"
-      "38 30 0:3 / /vendor rw,relatime shared:2 master:2 - overlayfs overlay rw\n";
-    const auto findings = scanMountsForOverlayFs(mountinfo);
-    assert(findings.size() == 1);
-    assert(findings.front().signalId == SignalId::ANDROID_MOUNT_OVERLAYFS);
-    assert(findings.front().evidence == "overlay-over-system-paths=/system,/vendor");
-  }
-
-  // Stock device: system partitions backed by block devices — nothing fires.
-  {
-    constexpr std::string_view mountinfo =
-      "36 30 0:1 / / rw,relatime master:1 - ext4 /dev/block/dm-0\n"
-      "37 30 0:2 / /system rw,relatime - erofs /dev/block/dm-1 rw\n"
-      "38 30 0:3 / /vendor rw,relatime - ext4 /dev/block/dm-2 rw\n"
-      "39 30 0:4 / /product rw,relatime - f2fs /dev/block/dm-3 rw\n";
-    assert(scanMountsForOverlayFs(mountinfo).empty());
-  }
-
-  // Overlay over *non-system* paths (container/docker-style overlay on /data,
-  // /sbin, /debug_ramdisk) is not a system-image modification — must not fire.
-  {
-    constexpr std::string_view mountinfo =
-      "37 30 0:2 / /data rw,relatime - overlay overlay rw\n"
-      "38 30 0:3 / /sbin rw,relatime - overlay overlay rw\n"
-      "39 30 0:4 / /debug_ramdisk rw,relatime - overlay overlay rw\n";
-    assert(scanMountsForOverlayFs(mountinfo).empty());
-  }
-
-  // tmpfs over /system is the DenyList fingerprint's domain, not overlayfs.
-  {
-    constexpr std::string_view mountinfo =
-      "37 30 0:2 / /system rw - tmpfs magisk rw\n"
-      "38 30 0:3 / /vendor rw - tmpfs magisk rw\n";
-    assert(scanMountsForOverlayFs(mountinfo).empty());
-  }
+  // ---- Mount metadata: overlay-filesystem coverage lives in
+  // OverlayFsTests.cpp; DenyList coverage in DenyListFingerprintTests.cpp;
+  // the clean-device corpus in MountCorpusTests.cpp. ----------------------
 
   assert(scanMountsForOverlayFs("").empty());
 
@@ -405,14 +359,15 @@ int main() {
 
     const auto denyListSpec = lookupSignal(SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT);
     assert(denyListSpec.has_value());
-    assert(denyListSpec->score == 15.0);
-    assert(denyListSpec->severity == Severity::MEDIUM);
+    assert(denyListSpec->score == 5.0);
+    assert(denyListSpec->severity == Severity::LOW);
+    assert(denyListSpec->reliability == 0.40);
 
     const auto overlayFsSpec = lookupSignal(SignalId::ANDROID_MOUNT_OVERLAYFS);
     assert(overlayFsSpec.has_value());
-    assert(overlayFsSpec->score == 15.0);
+    assert(overlayFsSpec->score == 10.0);
     assert(overlayFsSpec->severity == Severity::MEDIUM);
-    assert(overlayFsSpec->reliability == 0.6);
+    assert(overlayFsSpec->reliability == 0.55);
 
     // Unknown ids have no catalog entry (never a positive finding).
     assert(!lookupSignal("android.unknown.future_id").has_value());
@@ -420,6 +375,8 @@ int main() {
 
   // ---- Sub-suites ----------------------------------------------------------
   runDenyListFingerprintTests();
+  runOverlayFsTests();
+  runMountCorpusTests();
   runScoringTests();
 
   return 0;

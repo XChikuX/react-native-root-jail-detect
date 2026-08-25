@@ -7,6 +7,12 @@
 
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
+// Minimal shims for the F3.2 drift-guard test below: the React Native
+// tsconfig has no `@types/node`, but Babel-compiled CJS modules still provide
+// `require` and `__dirname` at runtime.
+declare function require(id: string): any;
+declare const __dirname: string;
+
 // --- Mocks ----------------------------------------------------------------
 
 // `NitroModules.createHybridObject` returns our mock root object. We construct
@@ -388,9 +394,9 @@ describe('@psync/anti-jailbreak wrappers', () => {
           signals: [
             stubSignal('android.mount.denylist_unmount', {
               category: 'mount',
-              severity: 'medium',
-              score: 15,
-              reliability: 0.55,
+              severity: 'low',
+              score: 5,
+              reliability: 0.4,
             }),
           ],
         })
@@ -406,15 +412,15 @@ describe('@psync/anti-jailbreak wrappers', () => {
           signals: [
             stubSignal('android.mount.denylist_unmount', {
               category: 'mount',
-              severity: 'medium',
-              score: 15,
-              evidence: 'tmpfs-over-system-paths=/system,/vendor',
+              severity: 'low',
+              score: 5,
+              evidence: 'tmpfs-over-system-paths=/system,/vendor;residual-magisk-artifacts',
             }),
           ],
         })
       );
       await expect(getDetectionReasons()).resolves.toEqual([
-        'tmpfs-over-system-paths=/system,/vendor',
+        'tmpfs-over-system-paths=/system,/vendor;residual-magisk-artifacts',
       ]);
     });
 
@@ -424,8 +430,8 @@ describe('@psync/anti-jailbreak wrappers', () => {
           signals: [
             stubSignal('android.mount.denylist_unmount', {
               category: 'mount',
-              severity: 'medium',
-              score: 15,
+              severity: 'low',
+              score: 5,
               unavailable: true,
             }),
           ],
@@ -441,14 +447,32 @@ describe('@psync/anti-jailbreak wrappers', () => {
             stubSignal('android.mount.overlayfs', {
               category: 'mount',
               severity: 'medium',
-              score: 15,
-              reliability: 0.6,
+              score: 10,
+              reliability: 0.55,
             }),
           ],
         })
       );
       await expect(getDetectionReasons()).resolves.toEqual([
         'An overlay filesystem is mounted over a system partition (modified system image — adb remount, GSI, or systemless-overlay root).',
+      ]);
+    });
+
+    it('surfaces the user-writable backing flag from the overlayfs evidence', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [
+            stubSignal('android.mount.overlayfs', {
+              category: 'mount',
+              severity: 'medium',
+              score: 10,
+              evidence: 'overlay-over-system-paths=/system;user-writable-backing',
+            }),
+          ],
+        })
+      );
+      await expect(getDetectionReasons()).resolves.toEqual([
+        'overlay-over-system-paths=/system;user-writable-backing',
       ]);
     });
   });
@@ -655,6 +679,59 @@ describe('@psync/anti-jailbreak wrappers', () => {
         'Failed to stop security watchdog:',
         err
       );
+    });
+  });
+
+  // F3.2 drift guard: the host-side fixture tests (`bun run native-test`)
+  // compile a hand-declared `DetectionSignal` stand-in under
+  // `ROOTJAILDETECT_HOST_TEST` (see `cpp/Scoring.hpp`). If the nitrogen-
+  // generated struct ever changes shape, the stand-in would silently drift
+  // and the fixture suite would validate fiction. This test parses the
+  // committed generated header and asserts it still declares exactly the
+  // field set the stand-in mirrors, so drift fails loudly in CI instead.
+  describe('host-test stand-in drift guard (F3.2)', () => {
+    const fs = require('fs') as { readFileSync(filePath: string, encoding: string): string };
+    const pathMod = require('path') as { join(...parts: string[]): string };
+    const generatedHeaderPath = pathMod.join(
+      __dirname,
+      '..',
+      '..',
+      'nitrogen',
+      'generated',
+      'shared',
+      'c++',
+      'DetectionSignal.hpp'
+    );
+
+    it('generated DetectionSignal declares the stand-in field set', () => {
+      const header = fs.readFileSync(generatedHeaderPath, 'utf8');
+      // Keep in sync with the stand-in in `cpp/Scoring.hpp` (order matters:
+      // the stand-in is compared member-for-member by the fixture tests).
+      const standInFields = [
+        'id',
+        'platform',
+        'category',
+        'severity',
+        'score',
+        'detected',
+        'reliability',
+        'evidence',
+        'unavailable',
+      ];
+      const structBody = header.match(
+        /struct DetectionSignal final \{([\s\S]*?)friend bool operator==/
+      );
+      expect(structBody).not.toBeNull();
+      for (const field of standInFields) {
+        expect(structBody?.[1]).toMatch(new RegExp(`\\b${field}\\s+SWIFT_PRIVATE`));
+      }
+      // No extra public data members beyond the stand-in set (a new field in
+      // the generated struct must be mirrored into the stand-in).
+      const declaredFields: string[] =
+        structBody?.[1]?.match(/\b(\w+)\s+SWIFT_PRIVATE/g) ?? [];
+      expect(
+        declaredFields.map((f: string) => f.replace(/\s+SWIFT_PRIVATE/, ''))
+      ).toEqual(standInFields);
     });
   });
 });

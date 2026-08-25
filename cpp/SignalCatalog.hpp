@@ -218,19 +218,20 @@ namespace margelo::nitro::rootjaildetect {
     inline constexpr std::string_view ANDROID_ENV_PATH_MAGISK = "android.env.path_magisk";
     /// Mount metadata contains a conservative multi-layer root overlay candidate.
     inline constexpr std::string_view ANDROID_MOUNT_MAGISK_CHAIN = "android.mount.magisk_chain";
-    /// App mount namespace shows characteristic tmpfs overlays / mount-propagation
-    /// patterns consistent with Magisk DenyList unmount cleanup. The complementary
-    /// signal to `android.mount.magisk_chain`: when DenyList is active, the
-    /// explicit Magisk tokens are removed from `/proc/self/mountinfo` but the
-    /// namespace cleanup itself leaves a recognizable structural fingerprint
-    /// (tmpfs mounts over system paths, propagation markers). Fires only when
-    /// at least two independent indicators agree, to keep false positives low
-    /// on legitimate multi-profile / scoped-storage setups.
+    /// App mount namespace shows the structural residue of unmount-style root
+    /// hiding: >= 2 distinct canonical system partitions mounted as `tmpfs`,
+    /// regardless of mount source. A correctly functioning modern Magisk v24+
+    /// DenyList removes every framework mount, so this is an expected no-fire
+    /// there (legacy MagiskHide, forks, unmount modules, and partial cleanups
+    /// are the realistic true positives). Hypothesis-weight signal; surviving
+    /// magisk tokens only enrich the evidence (`;residual-magisk-artifacts`).
     inline constexpr std::string_view ANDROID_MOUNT_DENYLIST_UNMOUNT =
       "android.mount.denylist_unmount";
-    /// An `overlay`/`overlayfs` super-block mounted over a canonical system
-    /// partition — never stock; indicates `adb remount` (unlocked bootloader),
-    /// GSI/DSU installs, or a systemless-overlay root setup.
+    /// An `overlay`/`overlayfs` super-block mounted over an exact canonical
+    /// system-partition root — indicates `adb remount` (unlocked bootloader),
+    /// GSI/DSU installs, or a systemless-overlay root setup. Stock Xiaomi
+    /// HyperOS/MIUI OEM resource layering is excluded by design (subpath
+    /// mounts never fire; fully OEM-backed overlays are suppressed).
     inline constexpr std::string_view ANDROID_MOUNT_OVERLAYFS =
       "android.mount.overlayfs";
   } // namespace SignalId

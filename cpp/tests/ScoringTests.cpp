@@ -233,4 +233,42 @@ void runScoringTests() {
     assert(result.confidence == Confidence::LOW);
     assert(result.contributing.size() == 1);
   }
+
+  // ---- Mount hypothesis signals are never a sole compromise basis (WS-B) --
+  // Policy: hypothesis signals ship at weight 5-10 with reliability < 0.8,
+  // and neither mount signal alone may reach the default minScore (40.0,
+  // ResolvedRootJailDetectOptions). Weights may only rise after the
+  // on-device measurement program records zero clean-corpus FPs and a
+  // reproducible TP fixture (see CLAUDE.md detection policy).
+  {
+    const auto denyList = lookupSignal(SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT);
+    assert(denyList.has_value());
+    assert(denyList->score == 5.0);
+    assert(denyList->severity == Severity::LOW);
+    assert(denyList->reliability == 0.40 && denyList->reliability < 0.8);
+
+    const auto overlayFs = lookupSignal(SignalId::ANDROID_MOUNT_OVERLAYFS);
+    assert(overlayFs.has_value());
+    assert(overlayFs->score == 10.0);
+    assert(overlayFs->severity == Severity::MEDIUM);
+    assert(overlayFs->reliability == 0.55 && overlayFs->reliability < 0.8);
+
+    constexpr double kDefaultMinScore = 40.0;
+    assert(denyList->score < kDefaultMinScore);
+    assert(overlayFs->score < kDefaultMinScore);
+    assert(denyList->score + overlayFs->score < kDefaultMinScore);
+
+    // End-to-end through the aggregator with catalog-faithful weights: both
+    // hypothesis signals together stay far below the compromise threshold.
+    const std::vector<DetectionSignal> signals = {
+      makeSignal(std::string(SignalId::ANDROID_MOUNT_DENYLIST_UNMOUNT),
+                 denyList->category, denyList->severity, denyList->score),
+      makeSignal(std::string(SignalId::ANDROID_MOUNT_OVERLAYFS),
+                 overlayFs->category, overlayFs->severity, overlayFs->score),
+    };
+    const auto result = aggregateSignals(signals);
+    assert(result.score == 15.0);
+    assert(result.score < kDefaultMinScore);
+    assert(result.confidence == Confidence::MEDIUM);
+  }
 }

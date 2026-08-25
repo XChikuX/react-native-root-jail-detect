@@ -150,7 +150,8 @@ const signalReasons: Record<string, string> = {
     'The app mount namespace shows the structural fingerprint of Magisk DenyList unmount cleanup (tmpfs overlays over system paths).',
   'android.mount.overlayfs':
     'An overlay filesystem is mounted over a system partition (modified system image — adb remount, GSI, or systemless-overlay root).',
-  'ios.sandbox.write': 'A sandbox write to a restricted path succeeded.',
+  'ios.sandbox.write':
+    'A write outside the app sandbox succeeded — the process sandbox is absent or escaped (an unsandboxing tweak, escaped entitlements, or active tampering).',
   'ios.check.sandbox': 'The sandbox write test did not complete within the time budget.',
   'android.check.selinux': 'The SELinux state check did not complete within the time budget.',
   'android.check.modules': 'The Magisk module tree could not be inspected; absence is not evidence of a clean device.',
@@ -162,11 +163,14 @@ const signalReasons: Record<string, string> = {
   'ios.dyld.hook': 'A suspicious runtime hook image is loaded.',
   'ios.jailbreak.artifact': 'A known jailbreak artifact is accessible.',
   'ios.jailbreak.rootless': 'A rootless jailbreak bootstrap artifact is present.',
-  'ios.jailbreak.dopamine': 'A Dopamine-specific artifact is present.',
-  'ios.jailbreak.palera1n': 'A palera1n-specific artifact is present.',
+  'ios.jailbreak.dopamine':
+    'A Dopamine-specific artifact is present (profile marker probe parked pending verified observables; Dopamine is also detected via the rootless bootstrap signal).',
+  'ios.jailbreak.palera1n':
+    'A palera1n-specific artifact is present (profile marker probe parked pending verified observables; palera1n is also detected via the rootless bootstrap signal).',
   'ios.network.frida': 'A Frida server is listening on the default loopback port.',
   'ios.network.ssh': 'An SSH server is listening on a loopback port.',
-  'ios.sideload.trollstore': 'A TrollStore-related artifact is present (sideloading tool, not a full jailbreak).',
+  'ios.sideload.trollstore':
+    'TrollStore sideloading indicator (hypothesis — TrollStore hides by design; this signal currently has no active probe and fires only via future verified observables).',
   'ios.urlscheme.jailbreak_store': 'A jailbreak-store URL scheme responded to canOpenURL.',
   'ios.simulator': 'The app is running in the iOS simulator.',
 };

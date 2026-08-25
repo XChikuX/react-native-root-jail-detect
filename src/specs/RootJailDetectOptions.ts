@@ -58,7 +58,8 @@ export interface RootJailDetectOptions {
   enablePlayIntegrity?: boolean;
   /**
    * iOS URL-scheme probe configuration. See {@linkcode UrlSchemeOptions} for
-   * details on the 50-entry `LSApplicationQueriesSchemes` cap.
+   * the `LSApplicationQueriesSchemes` prerequisite and its entry caps
+   * (50 for apps linked on iOS 15+, 25 for iOS 27+).
    *
    * Defaults to testing `cydia`, `sileo`, `zbra`, `filza`.
    *

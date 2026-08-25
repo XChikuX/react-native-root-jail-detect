@@ -26,6 +26,17 @@ function withAntiJailbreak(config, props = {}) {
     ? props.urlSchemes
     : ['cydia', 'sileo', 'zbra', 'filza'];
 
+  // `LSApplicationQueriesSchemes` cap: 50 entries for apps linked on iOS 15+,
+  // reduced to 25 for apps linked on iOS 27+ (where `canOpenURL` is also
+  // deprecated). The prebuild pipeline cannot know which SDK the host app
+  // will link against, so the default stays at the historical 50 and hosts
+  // targeting iOS 27+ should pass `schemeCap: 25`. The cap is shared with the
+  // host app's own queries.
+  const schemeCap =
+    typeof props.schemeCap === 'number' && props.schemeCap > 0
+      ? Math.floor(props.schemeCap)
+      : 50;
+
   let modified = withAndroidManifest(config, (mod) => {
     const manifest = mod.modResults.manifest;
     const queries = manifest.queries ?? [];
@@ -88,13 +99,14 @@ function withAntiJailbreak(config, props = {}) {
         ...existing,
         ...urlSchemes.filter((scheme) => !existing.has(scheme)),
       ];
-      if (merged.length > 50) {
+      if (merged.length > schemeCap) {
         console.warn(
-          '[@psync/anti-jailbreak] LSApplicationQueriesSchemes would exceed the iOS 15+ 50-entry cap. ' +
-            'Only the first 50 entries are effective; the remainder will silently return NO from canOpenURL.'
+          `[@psync/anti-jailbreak] LSApplicationQueriesSchemes would exceed the ${schemeCap}-entry cap ` +
+            '(50 for apps linked on iOS 15+, 25 for apps linked on iOS 27+ — pass `schemeCap` to override). ' +
+            `Only the first ${schemeCap} entries are effective; the remainder will silently return false from canOpenURL.`
         );
       }
-      infoPlist.LSApplicationQueriesSchemes = merged.slice(0, 50);
+      infoPlist.LSApplicationQueriesSchemes = merged.slice(0, schemeCap);
       return mod;
     });
   }

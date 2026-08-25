@@ -130,13 +130,23 @@ namespace margelo::nitro::rootjaildetect {
     /// Classic jailbreak artifact path or directory is accessible.
     inline constexpr std::string_view IOS_JAILBREAK_ARTIFACT = "ios.jailbreak.artifact";
     /// Rootless jailbreak bootstrap prefix is present (Dopamine, palera1n, etc.).
+    /// Detected via the shared `/var/jb` (and `/private/jb`) symlink — a
+    /// dangling symlink counts too (bootstrap laid down, jailbreak off).
     inline constexpr std::string_view IOS_JAILBREAK_ROOTLESS = "ios.jailbreak.rootless";
-    /// Dopamine-specific bootstrap marker present.
+    /// Dopamine-specific bootstrap marker present. PARKED since v0.13.0: no
+    /// verified profile-specific observable exists (the v0.12.0 marker-file
+    /// literals were unverified and removed); Dopamine is still detected via
+    /// `ios.jailbreak.rootless`.
     inline constexpr std::string_view IOS_JAILBREAK_DOPAMINE = "ios.jailbreak.dopamine";
-    /// palera1n-specific bootstrap marker present.
+    /// palera1n-specific bootstrap marker present. PARKED since v0.13.0 (same
+    /// rationale as `ios.jailbreak.dopamine`); palera1n rootless is still
+    /// detected via `ios.jailbreak.rootless`, rootful via classic paths.
     inline constexpr std::string_view IOS_JAILBREAK_PALERA1N = "ios.jailbreak.palera1n";
-    /// TrollStore persistence/helper presence. TrollStore is a sideloading tool,
-    /// not a jailbreak — its detection is intentionally a separate signal.
+    /// TrollStore persistence/helper presence. PARKED since v0.13.0 at
+    /// hypothesis weight with no active probe: TrollStore installs into
+    /// normal containers and hijacks `apple-magnifier://` precisely to defeat
+    /// scheme probes — no sandboxed-app observable is known. TrollStore is a
+    /// sideloading tool, not a jailbreak — the id remains a separate signal.
     inline constexpr std::string_view IOS_SIDeload_TROLLSTORE = "ios.sideload.trollstore";
     /// One or more jailbreak-store URL schemes responded to `canOpenURL`.
     inline constexpr std::string_view IOS_URLSCHEME_JAILBREAK_STORE = "ios.urlscheme.jailbreak_store";

@@ -188,7 +188,7 @@ configure({
 
 ### iOS URL-scheme probing
 
-iOS URL-scheme checks use `UIApplication.canOpenURL`, which iOS 15+ caps at 50 declared schemes per app via `LSApplicationQueriesSchemes`. The cap is shared across the host app — keep the list minimal and configurable. The Expo config plugin merges the configured schemes during prebuild:
+iOS URL-scheme checks use `UIApplication.canOpenURL`, which **only sees schemes declared in the host app's `LSApplicationQueriesSchemes`** — an undeclared scheme always returns `false`, silently, whether or not a handler is installed. The cap is shared with the host app's own queries: apps linked on iOS 15+ may declare at most **50** schemes; apps linked on iOS 27+ are limited to **25** (where `canOpenURL` is also deprecated, though still functional). Keep the list minimal and configurable.
 
 ```ts
 import { configure } from '@psync/anti-jailbreak';
@@ -220,15 +220,15 @@ For bare React Native, declare the schemes in `ios/<App>/Info.plist`:
 </array>
 ```
 
-Undeclared schemes safely return `NO` and never produce a false positive.
+Undeclared schemes always return `false` — the probe fails *closed* (never a false positive), but a missing declaration silently disables that scheme's check.
 
-For Expo, the config plugin's own `urlSchemes` prop (separate from `configure()`) merges schemes into `Info.plist` during prebuild and enforces the 50-entry cap:
+For Expo, the config plugin's own `urlSchemes` prop (separate from `configure()`) merges schemes into `Info.plist` during prebuild and enforces the entry cap (50 by default; pass `schemeCap: 25` if your app links on iOS 27+):
 
 ```json
 {
   "expo": {
     "plugins": [
-      ["@psync/anti-jailbreak", { "urlSchemes": ["cydia", "sileo"] }]
+      ["@psync/anti-jailbreak", { "urlSchemes": ["cydia", "sileo"], "schemeCap": 25 }]
     ]
   }
 }
@@ -495,12 +495,12 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | high | `ios.network.frida` | 30 | Frida server responding on loopback 27042 |
 | high | `ios.network.ssh` | 30 | SSH server responding on loopback (22 or 44) |
 | medium | `ios.jailbreak.artifact` | 20 | Classic jailbreak file or directory accessible |
-| medium | `ios.jailbreak.rootless` | 20 | Rootless jailbreak bootstrap prefix present (e.g. `/var/jb`, `/private/preboot/jb`) |
-| medium | `ios.jailbreak.dopamine` | 20 | Dopamine-specific artifact present |
-| medium | `ios.jailbreak.palera1n` | 20 | palera1n-specific artifact present |
-| medium | `ios.sideload.trollstore` | 15 | TrollStore sideloading artifact present (not a jailbreak) |
+| medium | `ios.jailbreak.rootless` | 20 | Rootless bootstrap symlink present (`/var/jb` or `/private/jb`; a dangling link counts — bootstrap laid down, jailbreak off) |
+| medium | `ios.jailbreak.dopamine` | 20 | Dopamine profile marker — probe parked pending verified observables (Dopamine is caught by the rootless signal) |
+| medium | `ios.jailbreak.palera1n` | 20 | palera1n profile marker — probe parked pending verified observables (palera1n is caught by the rootless signal) |
+| low | `ios.sideload.trollstore` | 5 | TrollStore indicator — parked at hypothesis weight with no active probe (no sandboxed-app observable exists; see Threat Model) |
 | medium | `ios.urlscheme.jailbreak_store` | 15 | Jailbreak-store URL scheme responded to `canOpenURL` |
-| high | `ios.sandbox.write` | 30 | Sandbox write outside the app sandbox succeeded |
+| high | `ios.sandbox.write` | 30 | A write outside the app sandbox succeeded — the process sandbox is absent or escaped (unsandboxing tweak, escaped entitlements, or active tampering). High precision, high FN: ordinary rootless jailbreaks keep apps sandboxed |
 | medium | `ios.simulator` | 20 | iOS simulator environment |
 | informational | `ios.debugger.sysctl` | 0 | `sysctl` reports P_TRACED (diagnostic) |
 | informational | `*.check.*` | 0 | Check timed out / unavailable (not compromise) |
@@ -515,9 +515,12 @@ The Android PackageManager lists are subject to Android package visibility and t
 
 - **Client heuristics are non-authoritative:** Always bind sensitive decisions to short-lived server sessions with backend attestation (Play Integrity / App Attest).
 - **Legitimate custom ROMs & devs:** Unlocked bootloaders, `test-keys`, and permissive SELinux can occur on legitimate developer devices. Tune `minScore` appropriately.
-- **Rootless jailbreaks and TrollStore:** iOS rootless jailbreaks (Dopamine, palera1n) deliberately avoid classic paths and use `/var/jb` or `/private/preboot/...` prefixes. TrollStore is a sideloading tool, not a jailbreak, and is reported separately under `ios.sideload.trollstore`.
+- **iOS jailbreak coverage map (2026):** rootless jailbreaks (Dopamine 2/3, palera1n rootless — iOS 15+ through 26.0.x) share the `/var/jb` symlink convention and are **detected** (including dangling symlinks). Rootful layouts (palera1n rootful, classic tools) write to rootfs paths and are **detected** via the classic artifact list. **roothide-class environments are a documented false-negative ceiling**: the bootstrap lives at a randomized `/var/containers/Bundle/.../.jbroot-<id>` path and is invisible to path checks — only *loaded* roothide tweak images are caught (dyld provenance rule). **TrollStore is not reliably detectable from a sandboxed app**: it installs apps into normal containers and hijacks the system `apple-magnifier://` scheme specifically to defeat scheme probes; its signal is parked at hypothesis weight with no active probe.
+- **Hybrid rootless + rootful devices** report both artifact classes (40 combined weight) — two independent evidence classes, deliberately not collapsed.
+- **Simulator runs are structurally non-representative:** the iOS simulator branch emits `ios.simulator` and skips all device-only checks (artifacts, dyld, sandbox, schemes); a clean simulator result says nothing about device behavior.
+- **Rootless jailbreaks and TrollStore:** iOS rootless jailbreaks (Dopamine, palera1n) deliberately avoid classic paths and use the `/var/jb` symlink convention. TrollStore is a sideloading tool, not a jailbreak, and its signal (`ios.sideload.trollstore`) is parked — see the coverage map above.
 - **Renamed Frida gadgets:** Memory-map and `_dyld` scans include common rename patterns (`libgadget`, `gadget.dylib`, etc.), but a determined attacker can rename further. Treat these as defensive signals, not proof.
-- **iOS URL schemes:** The default probe list (`cydia`, `sileo`, `zbra`, `filza`) respects the 50-entry `LSApplicationQueriesSchemes` cap shared with the host app. Configure `RootJailDetectOptions.urlSchemes.schemes` to change or disable the list. Undeclared schemes safely return `NO` and never produce a false positive.
+- **iOS URL schemes:** The default probe list (`cydia`, `sileo`, `zbra`, `filza`) respects the `LSApplicationQueriesSchemes` cap shared with the host app (50 entries for apps linked on iOS 15+, 25 for iOS 27+). Configure `RootJailDetectOptions.urlSchemes.schemes` to change or disable the list. Undeclared schemes always return `false` — never a false positive, but a missing `LSApplicationQueriesSchemes` declaration silently disables that scheme's check.
 - **Confidence levels:** `low`/`medium`/`high` reflect how complete and convergent the pass was. `extreme` is reserved by the aggregator for combinations of multiple high-severity, independent-category signals that together push the score very high (≈ 80).
 - **Modern Magisk DenyList caveat:** a *correctly functioning* Magisk v24+ DenyList (`revert_unmount`) removes every framework mount — including its own tmpfs — from the denied app's namespace, so `android.mount.denylist_unmount` is an expected no-fire there. The signal catches legacy MagiskHide, Magisk forks (e.g. Kitsune), third-party unmount modules, and partial cleanups (`EBUSY`). It is not DenyList-proof and ships at low hypothesis weight pending on-device measurement.
 - **Stock OEM overlay caveat:** stock Xiaomi HyperOS/MIUI devices ship `overlay` mounts as part of their OEM resource layering (backed by `/mnt/vendor/mi_ext` and `/product/pangu`, typically at subpaths such as `/system/app`). The `android.mount.overlayfs` scanner only matches exact partition roots and suppresses fully OEM-backed overlays; the suppression list is deliberately small and grows only with real-device evidence. Other OEMs layering overlays at partition roots in the future would be reported — report such devices so the corpus can grow.

@@ -4,6 +4,7 @@
 
 #include "IOSChecks.hpp"
 #include "HybridUrlSchemeProbe.hpp"
+#include "IOSMatchers.hpp"
 #include "SignalCatalog.hpp"
 #include "TcpProbe.hpp"
 
@@ -106,78 +107,60 @@ namespace margelo::nitro::rootjaildetect {
       return result;
     }
 
-    constexpr const char* kJailbreakPaths[] = {
-      "/private/jb",
-      "/var/jb",
-      "/Applications/Cydia.app",
-      "/Library/MobileSubstrate/MobileSubstrate.dylib",
-      // Common rootless bootstrap prefixes / markers.
-      "/private/preboot/jb",
-      "/private/preboot/dopamine",
-      "/private/preboot/palera1n",
-      "/var/jb/.installed_dopamine",
-      "/var/jb/.installed_palera1n",
-      "/var/jb/usr/lib/TweakInject.dylib",
-      // TrollStore-related persistence helpers — separate signal, low FP when
-      // the file exists but it does not grant full jailbreak filesystem access.
-      "/var/containers/Bundle/trollstoreapp",
-      "/var/containers/Bundle/.trollstoreappinstalled",
-    };
-
+    // ---- Filesystem artifact probes -----------------------------------------
+    // Table-driven (see IOSMatchers.hpp): every literal is evidence-backed;
+    // classification is a pure table lookup per path, so a device exposing
+    // BOTH rootless and classic artifacts (rootless bootstrap over rootful
+    // remnants) reports both classes instead of the first one evaluated
+    // (v0.12.0 order-coupling bug). Removed in v0.13.0 as unverified:
+    // `/private/preboot/{jb,dopamine,palera1n}` (real layout is
+    // `/private/preboot/<UUID>/jb` via the `/var/jb` symlink),
+    // `/var/jb/.installed_{dopamine,palera1n}` (no source evidence), and the
+    // TrollStore bundle paths (TrollStore installs into normal containers;
+    // see README "Threat Model" — `ios.sideload.trollstore` is parked at
+    // hypothesis weight with no probe).
     bool rootlessArtifactFound = false;
     bool classicArtifactFound = false;
-    bool dopamineArtifactFound = false;
-    bool palera1nArtifactFound = false;
-    bool trollstoreArtifactFound = false;
+    bool rootlessSymlinkOnly = false;
 
-    for (const char* path : kJailbreakPaths) {
+    for (const IOSArtifactProbe& probe : IOS_ARTIFACT_PROBES) {
       struct stat status {};
-      if (::stat(path, &status) != 0) {
+      bool exists = ::stat(probe.path, &status) == 0;
+      if (!exists && probe.symlinkProbe) {
+        // `stat` follows symlinks: a dangling `/var/jb` (jailbreak deactivated,
+        // bootstrap still laid down) is invisible to it. `lstat` sees the link
+        // itself and counts it as a rootless artifact.
+        struct stat linkStatus {};
+        if (::lstat(probe.path, &linkStatus) == 0) {
+          exists = true;
+          rootlessSymlinkOnly = true;
+        }
+      }
+      if (!exists) {
         continue;
       }
-      const std::string_view pv(path);
-      if (pv.find("/var/jb") != std::string_view::npos ||
-          pv.find("/private/preboot/jb") != std::string_view::npos) {
-        rootlessArtifactFound = true;
-      }
-      if (pv.find("dopamine") != std::string_view::npos ||
-          pv == "/var/jb/.installed_dopamine") {
-        dopamineArtifactFound = true;
-      }
-      if (pv.find("palera1n") != std::string_view::npos ||
-          pv == "/var/jb/.installed_palera1n") {
-        palera1nArtifactFound = true;
-      }
-      if (pv.find("trollstore") != std::string_view::npos) {
-        trollstoreArtifactFound = true;
-      }
-      if (!rootlessArtifactFound && !dopamineArtifactFound &&
-          !palera1nArtifactFound && !trollstoreArtifactFound) {
-        classicArtifactFound = true;
+      switch (classifyIOSArtifactPath(probe.path)) {
+        case IOSArtifactClass::ROOTLESS:
+          rootlessArtifactFound = true;
+          break;
+        case IOSArtifactClass::CLASSIC:
+          classicArtifactFound = true;
+          break;
+        case IOSArtifactClass::NONE:
+          break;
       }
     }
 
-    // Emit distinct, stable signal ids so callers can reason about the class of
-    // jailbreak profile observed. We report at most one rootless bootstrap signal
-    // plus profile-specific markers.
+    // Emit every matched class as its own stable signal id so callers can
+    // reason about the jailbreak profile observed. Scoring deduplicates by
+    // id, and a hybrid rootless+classic device is *more* compromised, not
+    // less — both ids fire (40 combined weight, matching two independent
+    // artifact classes; reviewed in ScoringTests).
     if (rootlessArtifactFound) {
       result.signals.push_back(
-        buildSignal(SignalId::IOS_JAILBREAK_ROOTLESS, "rootless-bootstrap-artifact", includeEvidence)
-      );
-    }
-    if (dopamineArtifactFound) {
-      result.signals.push_back(
-        buildSignal(SignalId::IOS_JAILBREAK_DOPAMINE, "dopamine-artifact", includeEvidence)
-      );
-    }
-    if (palera1nArtifactFound) {
-      result.signals.push_back(
-        buildSignal(SignalId::IOS_JAILBREAK_PALERA1N, "palera1n-artifact", includeEvidence)
-      );
-    }
-    if (trollstoreArtifactFound) {
-      result.signals.push_back(
-        buildSignal(SignalId::IOS_SIDeload_TROLLSTORE, "trollstore-artifact", includeEvidence)
+        buildSignal(SignalId::IOS_JAILBREAK_ROOTLESS,
+                    rootlessSymlinkOnly ? "rootless-bootstrap-symlink" : "rootless-bootstrap-artifact",
+                    includeEvidence)
       );
     }
     if (classicArtifactFound) {
@@ -192,36 +175,28 @@ namespace margelo::nitro::rootjaildetect {
       return result;
     }
 
-    // Injections frameworks and common renamed Frida gadget names. Tokens are
-    // specific enough to avoid most benign libraries while still catching the
-    // renamed artifacts commonly used to evade naive scans (e.g. `libgadget`,
-    // `libhelper`). The `gadget`/`libgadget` tokens map to the same Frida signal
-    // id as the explicit Frida string so the score does not double-count.
+    // ---- dyld loaded-image scan ----------------------------------------------
+    // Matching lives in `IOSMatchers.hpp` (pure, host-testable):
+    // case-insensitive tokens, provenance rules for the rootless bootstrap
+    // tree (`/var/jb/`) and roothide `.jbroot` references, plus renamed-Frida
+    // gadget patterns. At most ONE dyld signal is emitted per pass — the
+    // scan answers "is a hooking/injection image loaded", not "how many";
+    // duplicate emissions would double-count the same evidence.
     for (uint32_t index = 0; index < _dyld_image_count(); ++index) {
       const char* image = _dyld_get_image_name(index);
       if (image == nullptr) {
         continue;
       }
-      const std::string path(image);
-      if (path.find("MobileSubstrate") != std::string::npos ||
-          path.find("Substitute") != std::string::npos ||
-          path.find("libhooker") != std::string::npos ||
-          path.find("ellekit") != std::string::npos ||
-          path.find("rosalie") != std::string::npos) {
+      const IOSImageVerdict verdict = matchLoadedImage(image);
+      if (verdict.frida) {
         result.signals.push_back(
-          buildSignal(SignalId::IOS_DYLD_HOOK, "suspicious-loaded-image", includeEvidence)
+          buildSignal(SignalId::IOS_DYLD_HOOK, "frida-or-gadget-image", includeEvidence)
         );
         break;
       }
-      // Frida / renamed gadget artifacts are reported under the same high-weight
-      // signal id as Android. Keep the substring list aligned with the rename
-      // patterns added to `ProcParsers.cpp` `K_HOOK_PATTERNS`.
-      if (path.find("Frida") != std::string::npos ||
-          path.find("frida") != std::string::npos ||
-          path.find("libgadget") != std::string::npos ||
-          path.find("gadget.dylib") != std::string::npos) {
+      if (verdict.hook) {
         result.signals.push_back(
-          buildSignal(SignalId::IOS_DYLD_HOOK, "frida-or-gadget-image", includeEvidence)
+          buildSignal(SignalId::IOS_DYLD_HOOK, "suspicious-loaded-image", includeEvidence)
         );
         break;
       }

@@ -357,13 +357,21 @@ describe('@psync/anti-jailbreak wrappers', () => {
       expect(reasons).toContain(
         'A known root management package was detected via PackageManager.'
       );
+      // The iOS sandbox-write reason was deliberately split from the Android
+      // one (F6 of IOS_PLAN.md): a successful write outside the sandbox means
+      // the process sandbox is absent or escaped, which deserves its own
+      // accurate wording instead of deduping into the generic shared text.
+      expect(reasons).toContain(
+        'A write outside the app sandbox succeeded — the process sandbox is absent or escaped (an unsandboxing tweak, escaped entitlements, or active tampering).'
+      );
       expect(reasons).toContain('A sandbox write to a restricted path succeeded.');
       expect(reasons).toContain(
         'The sandbox write test did not complete within the time budget.'
       );
-      // The text is shared across platform variants, so reasons dedupe to 3;
-      // no raw signal id may leak through the fallback path.
-      expect(reasons).toHaveLength(3);
+      // Platform variants no longer share one text across this set, so the
+      // five ids map to four distinct reasons; no raw signal id may leak
+      // through the fallback path.
+      expect(reasons).toHaveLength(4);
       for (const id of newIds) {
         expect(reasons).not.toContain(id);
       }

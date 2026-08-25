@@ -69,9 +69,26 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::IOS_JAILBREAK_ARTIFACT) return makeSpec(SignalId::IOS_JAILBREAK_ARTIFACT, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.60);
     // Medium weight until validated on physical rootless devices; see the Threat Model in `README.md`.
     if (id == SignalId::IOS_JAILBREAK_ROOTLESS) return makeSpec(SignalId::IOS_JAILBREAK_ROOTLESS, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.55);
+    // Dopamine / palera1n profile markers: PARKED — the v0.12.0 marker-file
+    // literals (`/var/jb/.installed_*`, bare `/private/preboot/<name>`) could
+    // not be verified against tool sources and were removed in v0.13.0. Both
+    // jailbreaks are still detected via `ios.jailbreak.rootless` (the shared
+    // `/var/jb` convention); these ids remain public contract and fire only
+    // if a verified profile-specific observable is added later
+    // (IOS_PLAN.md WS-I-F).
     if (id == SignalId::IOS_JAILBREAK_DOPAMINE) return makeSpec(SignalId::IOS_JAILBREAK_DOPAMINE, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.55);
     if (id == SignalId::IOS_JAILBREAK_PALERA1N) return makeSpec(SignalId::IOS_JAILBREAK_PALERA1N, Severity::MEDIUM, SignalCategory::FILESYSTEM, 20.0, 0.55);
-    if (id == SignalId::IOS_SIDeload_TROLLSTORE) return makeSpec(SignalId::IOS_SIDeload_TROLLSTORE, Severity::MEDIUM, SignalCategory::SANDBOX, 15.0, 0.50);
+    // TrollStore sideloading artifact: PARKED at hypothesis weight with NO
+    // active probe (v0.13.0). TrollStore installs apps into normal containers
+    // (indistinguishable by path) and deliberately hijacks the system
+    // `apple-magnifier://` scheme since v1.3 specifically to defeat scheme
+    // probes — no stable user-visible observable is reachable from a
+    // sandboxed app (verified against opa334/TrollStore docs, Aug 2026).
+    // The id stays in the public catalog; re-arm only with a verified
+    // observable from the measurement program.
+    if (id == SignalId::IOS_SIDeload_TROLLSTORE) return makeSpec(
+      SignalId::IOS_SIDeload_TROLLSTORE, Severity::LOW, SignalCategory::SANDBOX, 5.0, 0.35
+    );
     if (id == SignalId::IOS_URLSCHEME_JAILBREAK_STORE) return makeSpec(SignalId::IOS_URLSCHEME_JAILBREAK_STORE, Severity::MEDIUM, SignalCategory::SANDBOX, 15.0, 0.45);
     if (id == SignalId::IOS_SIMULATOR) return makeSpec(SignalId::IOS_SIMULATOR, Severity::MEDIUM, SignalCategory::SIGNATURE, 20.0, 0.90);
     if (id == SignalId::IOS_CHECK_URLSCHEME) return makeSpec(SignalId::IOS_CHECK_URLSCHEME, Severity::LOW, SignalCategory::DEBUGGER, 0.0, 0.0);

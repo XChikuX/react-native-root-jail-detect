@@ -210,4 +210,38 @@ void runOverlayFsTests() {
     assert(findings.size() == 1);
     assert(findings.front().signalId == signalId);
   }
+
+  // ---- optionValue key-boundary adversarial cases -------------------------
+  // A key name inside ANOTHER option's value must not be treated as a real
+  // key. Here `myupperdir=` contains the substring `upperdir=`; with
+  // substring-only matching the fabricated `/data/x` component would defeat
+  // OEM suppression and flip this stock-shaped line into a finding.
+  {
+    constexpr std::string_view mountinfo =
+      "37 30 0:2 / /product rw - overlay overlay "
+      "ro,lowerdir=/mnt/vendor/mi_ext/product:/product/pangu/product,myupperdir=/data/x\n";
+    assert(scanMountsForOverlayFs(mountinfo).empty());
+  }
+
+  // Same class: a `,key=` sequence that follows an ESCAPED comma is still
+  // inside the previous value (the `\,` is a literal comma), so it is not an
+  // option boundary.
+  {
+    constexpr std::string_view mountinfo =
+      "37 30 0:2 / /vendor rw - overlay overlay "
+      "ro,lowerdir=/mnt/vendor/mi_ext/vendor\\,upperdir=/data/x:/product/pangu/vendor\n";
+    assert(scanMountsForOverlayFs(mountinfo).empty());
+  }
+
+  // Positive control: real keys after unescaped commas still match, and the
+  // user-writable flag follows from genuinely /data-backed directories.
+  {
+    constexpr std::string_view mountinfo =
+      "37 30 0:2 / /system rw - overlay overlay "
+      "rw,lowerdir=/mnt/scratch/system,upperdir=/data/adb/up,workdir=/data/adb/wd\n";
+    const auto findings = scanMountsForOverlayFs(mountinfo);
+    assert(findings.size() == 1);
+    assert(findings.front().evidence ==
+           "overlay-over-system-paths=/system;user-writable-backing");
+  }
 }

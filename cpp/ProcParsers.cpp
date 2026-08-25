@@ -293,24 +293,39 @@ namespace margelo::nitro::rootjaildetect {
       return parsed;
     }
 
-    // Extract the value of a `key=` mount super-option. The value ends at the
-    // next unescaped comma (a `\,` sequence is libmount escaping for a literal
-    // comma inside the value, not an option separator).
+    // Extract the value of a `key=` mount super-option. The key must sit on an
+    // option *boundary*: start of the super-options blob or directly after an
+    // unescaped comma (the option separator). A key name occurring inside
+    // another option's value (e.g. `lowerdir=/x/myupperdir=/y`) must not match,
+    // otherwise classification keys off fabricated directories. The value ends
+    // at the next unescaped comma (a `\,` sequence is libmount escaping for a
+    // literal comma inside the value, not an option separator); a comma only
+    // terminates the value when it is not itself escaped.
     std::string_view optionValue(std::string_view superOptions, std::string_view key) noexcept {
-      const size_t keyStart = superOptions.find(key);
-      if (keyStart == std::string_view::npos) {
-        return {};
-      }
-      const size_t valueStart = keyStart + key.size();
-      size_t end = valueStart;
-      while (end < superOptions.size()) {
-        if (superOptions[end] == ',' &&
-            (end == 0 || superOptions[end - 1] != '\\')) {
-          break;
+      size_t searchFrom = 0;
+      while (searchFrom <= superOptions.size()) {
+        const size_t keyStart = superOptions.find(key, searchFrom);
+        if (keyStart == std::string_view::npos) {
+          return {};
         }
-        ++end;
+        const bool afterStart = keyStart == 0;
+        const bool afterUnescapedComma =
+          keyStart > 0 && superOptions[keyStart - 1] == ',' &&
+          (keyStart < 2 || superOptions[keyStart - 2] != '\\');
+        if (afterStart || afterUnescapedComma) {
+          const size_t valueStart = keyStart + key.size();
+          size_t end = valueStart;
+          while (end < superOptions.size()) {
+            if (superOptions[end] == ',' && superOptions[end - 1] != '\\') {
+              break;
+            }
+            ++end;
+          }
+          return superOptions.substr(valueStart, end - valueStart);
+        }
+        searchFrom = keyStart + 1;
       }
-      return superOptions.substr(valueStart, end - valueStart);
+      return {};
     }
 
     // Split a colon-separated overlayfs directory list (`lowerdir=/a:/b:/c`; the

@@ -9,6 +9,7 @@
 ///   - `runDenyListFingerprintTests()` (DenyListFingerprintTests.cpp)
 ///   - `runOverlayFsTests()`          (OverlayFsTests.cpp)
 ///   - `runMountCorpusTests()`        (MountCorpusTests.cpp)
+///   - `runIOSMatcherTests()`         (IOSMatcherTests.cpp)
 ///   - `runScoringTests()`            (ScoringTests.cpp)
 ///
 
@@ -23,6 +24,7 @@ using namespace margelo::nitro::rootjaildetect;
 void runDenyListFingerprintTests();
 void runOverlayFsTests();
 void runMountCorpusTests();
+void runIOSMatcherTests();
 void runScoringTests();
 
 int main() {
@@ -377,6 +379,7 @@ int main() {
   runDenyListFingerprintTests();
   runOverlayFsTests();
   runMountCorpusTests();
+  runIOSMatcherTests();
   runScoringTests();
 
   return 0;

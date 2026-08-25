@@ -214,9 +214,104 @@ describe('app.plugin.js', () => {
         expect(schemes.length).toBe(50);
         expect(warnSpy).toHaveBeenCalledWith(
           expect.stringContaining(
-            'LSApplicationQueriesSchemes would exceed the iOS 15+ 50-entry cap'
+            'LSApplicationQueriesSchemes would exceed the 50-entry cap'
           )
         );
+        // The warning must educate about the iOS 27+ reduced cap.
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('25 for apps linked on iOS 27+')
+        );
+
+        warnSpy.mockRestore();
+      });
+    });
+
+    it('supports schemeCap for apps linked on iOS 27+ (25-entry cap)', () => {
+      jest.isolateModules(() => {
+        jest.resetModules();
+
+        let infoPlistModCallback: (mod: any) => any = (mod) => mod;
+        const warnSpy = jest
+          .spyOn(console, 'warn')
+          .mockImplementation(() => {});
+
+        jest.mock(
+          '@expo/config-plugins',
+          () => ({
+            withAndroidManifest: (config: any) => config,
+            withInfoPlist: (config: any, cb: (mod: any) => any) => {
+              infoPlistModCallback = cb;
+              return config;
+            },
+          }),
+          { virtual: true }
+        );
+
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const plugin = require('../../app.plugin');
+
+        const customSchemes = Array.from(
+          { length: 30 },
+          (_, i) => `scheme${i}`
+        );
+        plugin({}, { urlSchemes: customSchemes, schemeCap: 25 });
+
+        const mockInfoPlistMod = {
+          modResults: {
+            LSApplicationQueriesSchemes: [],
+          },
+        };
+        const updatedInfoPlistMod = infoPlistModCallback(mockInfoPlistMod);
+        const schemes =
+          updatedInfoPlistMod.modResults.LSApplicationQueriesSchemes;
+
+        expect(schemes.length).toBe(25);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            'LSApplicationQueriesSchemes would exceed the 25-entry cap'
+          )
+        );
+
+        warnSpy.mockRestore();
+      });
+    });
+
+    it('does not warn or truncate below the cap', () => {
+      jest.isolateModules(() => {
+        jest.resetModules();
+
+        let infoPlistModCallback: (mod: any) => any = (mod) => mod;
+        const warnSpy = jest
+          .spyOn(console, 'warn')
+          .mockImplementation(() => {});
+
+        jest.mock(
+          '@expo/config-plugins',
+          () => ({
+            withAndroidManifest: (config: any) => config,
+            withInfoPlist: (config: any, cb: (mod: any) => any) => {
+              infoPlistModCallback = cb;
+              return config;
+            },
+          }),
+          { virtual: true }
+        );
+
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const plugin = require('../../app.plugin');
+        plugin({}); // default 4 schemes
+
+        const mockInfoPlistMod = {
+          modResults: {
+            LSApplicationQueriesSchemes: ['host-app-scheme'],
+          },
+        };
+        const updatedInfoPlistMod = infoPlistModCallback(mockInfoPlistMod);
+        const schemes =
+          updatedInfoPlistMod.modResults.LSApplicationQueriesSchemes;
+
+        expect(schemes.length).toBe(5);
+        expect(warnSpy).not.toHaveBeenCalled();
 
         warnSpy.mockRestore();
       });

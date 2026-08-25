@@ -9,9 +9,12 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   SafeAreaView,
+  Share,
+  Platform,
 } from 'react-native';
 import {
   checkDetailed,
+  configure,
   getDetectionReasons,
   startSecurityWatchdog,
   stopSecurityWatchdog,
@@ -26,6 +29,8 @@ function App() {
   const [detectionReasons, setDetectionReasons] = useState<string[]>([]);
   const [detailed, setDetailed] = useState<CompromiseAssessment | null>(null);
   const [watchdogRunning, setWatchdogRunning] = useState(false);
+  const [diagnosticsJson, setDiagnosticsJson] = useState<string | null>(null);
+  const [diagnosticsRunning, setDiagnosticsRunning] = useState(false);
 
   const checkDeviceSecurity = async () => {
     setLoading(true);
@@ -76,6 +81,60 @@ function App() {
   const stopWatchdog = () => {
     stopSecurityWatchdog();
     setWatchdogRunning(false);
+  };
+
+  // WS-F measurement instrumentation (PLAN.md): opt-in evidence-level export
+  // of one structured pass for the on-device corpus. Local share sheet only —
+  // no network. Honest scope note: this exports the assessment plus per-signal
+  // evidence; findings suppressed BY DESIGN (stock OEM overlays at subpaths,
+  // fully cleaned DenyList namespaces) never appear, and raw /proc lines are
+  // not exposed through the public API. Evidence is gated behind the global
+  // `includeEvidence` flag, so it is enabled for this single pass and restored
+  // afterwards to keep the regular demo path evidence-free.
+  const runDiagnostics = async () => {
+    setDiagnosticsRunning(true);
+    try {
+      configure({ includeEvidence: true });
+      const result = await checkDetailed();
+      const payload = {
+        schema: 'rootjaildetect-diagnostics/1',
+        capturedAt: new Date().toISOString(),
+        platform: Platform.OS,
+        osVersion: String(Platform.Version),
+        partial: result.partial,
+        score: Math.round(result.score),
+        confidence: result.confidence,
+        compromised: result.compromised,
+        debuggerDetected: result.debuggerDetected,
+        elapsedMs: Math.round(result.elapsedMs),
+        signals: result.signals.map((signal) => ({
+          id: signal.id,
+          category: signal.category,
+          severity: signal.severity,
+          score: signal.score,
+          reliability: signal.reliability,
+          detected: signal.detected,
+          unavailable: signal.unavailable ?? undefined,
+          evidence: signal.evidence ?? undefined,
+        })),
+      };
+      const json = JSON.stringify(payload, null, 2);
+      setDiagnosticsJson(json);
+      await Share.share({
+        message: json,
+        title: 'anti-jailbreak diagnostics',
+      });
+    } catch (error) {
+      console.error('Diagnostics failed:', error);
+      Alert.alert('Error', 'Failed to run diagnostics export');
+    } finally {
+      try {
+        configure({ includeEvidence: false });
+      } catch {
+        // Restoring the flag must never mask the original failure.
+      }
+      setDiagnosticsRunning(false);
+    }
   };
 
   useEffect(() => {
@@ -282,6 +341,60 @@ function App() {
               </View>
             </View>
 
+            <View style={styles.resultCard}>
+              <View style={styles.resultHeader}>
+                <Text style={styles.resultLabel}>Measurement Diagnostics</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: diagnosticsJson
+                        ? '#007AFF'
+                        : '#999',
+                    },
+                  ]}
+                >
+                  <Text style={styles.statusText}>
+                    {diagnosticsJson ? 'READY' : 'IDLE'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.resultDescription}>
+                Opt-in corpus export for the on-device measurement program.
+                Runs one evidence-enabled pass and opens the local share sheet
+                (no network). Findings suppressed by design — stock OEM overlay
+                layering, fully cleaned DenyList namespaces — do not appear;
+                this is an evidence-level export, not raw /proc access.
+              </Text>
+              <View style={styles.watchdogButtonRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.watchdogButton,
+                    styles.diagnosticsRunButton,
+                  ]}
+                  onPress={runDiagnostics}
+                  disabled={diagnosticsRunning}
+                >
+                  <Text style={styles.watchdogButtonText}>
+                    {diagnosticsRunning ? 'Running…' : 'Run & Export'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {diagnosticsJson && (
+                <View style={styles.infoBox}>
+                  <Text style={styles.infoTitle}>
+                    Last Export ({diagnosticsJson.length} chars)
+                  </Text>
+                  <Text
+                    style={[styles.codeText, styles.diagnosticsOutput]}
+                    numberOfLines={200}
+                  >
+                    {diagnosticsJson}
+                  </Text>
+                </View>
+              )}
+            </View>
+
             {detectionReasons && detectionReasons.length > 0 && (
               <View style={styles.warningBox}>
                 <Text style={styles.warningTitle}>Security Notice</Text>
@@ -403,6 +516,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  diagnosticsRunButton: {
+    backgroundColor: '#007AFF',
+  },
+  diagnosticsOutput: {
+    maxHeight: 240,
+    fontSize: 11,
+    lineHeight: 15,
   },
   warningBox: {
     backgroundColor: '#fff3cd',

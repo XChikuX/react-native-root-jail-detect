@@ -545,7 +545,7 @@ These hooks require the toolchain environment documented in "Native build
 commands" (Android SDK/JDK env vars for `release:android`; `DEVELOPER_DIR`
 for `pod install`), set in the shell that runs `bun run release`.
 
-## Detection policy & postmortems (consolidated 2026-08-25 from TRIAGE/HANDOFF/PLAN)
+## Detection policy & postmortems (consolidated 2026-08-25 from TRIAGE/HANDOFF/PLAN/IOS_PLAN)
 
 ### Signal severity policy
 - Evidence-backed signals ship at proposed weight; **hypothesis** signals ship low (5–10), raised only after clean-device FP fixtures; known-FP signals carry `reliability < 0.8`.
@@ -582,10 +582,11 @@ for `pod install`), set in the shell that runs `bun run release`.
 - Closed-source prebuilt `.so`; only UI labels (strings.xml) are public. DenyList-surviving vectors claimed there = structural mount fingerprints + HMA/risky packages; note the structural-fingerprint claim only holds for *incomplete* cleanups against modern Magisk (see `denylist_unmount` above).
 
 ### Open items
-- On-device measurement of hypothesis signals on a rooted LineageOS device (example app): absence of hypothesis signals is not evidence of a clean device; if evidence-backed signals don't reach `minScore`, add signals — never inflate weights.
-- Weight recovery gates (WS-F of the v0.13 remediation): `denylist_unmount` (5) and `overlayfs` (10) may only rise after zero clean-corpus FPs **and** ≥1 reproducible TP fixture (Magisk/Kitsune partial cleanup; KSU/APatch root-level overlays; adb-remount/GSI) are committed. Clean-corpus fixtures live in `cpp/tests/MountCorpusTests.cpp`.
-- iOS measurement matrix (IOS_PLAN.md WS-I-F): rootless `/var/jb` + dangling-symlink TPs, dyld provenance TPs, scheme probe live check post-plist-fix, roothide expected-FN pinning, TrollStore zero-observable confirmation.
-- Optional diagnostics screen in the example app (dumps raw matching mountinfo lines + iOS matched evidence, share-sheet export, watchdog `LOG_ONLY` only) to feed the corpus from volunteer devices.
+- On-device measurement (WS-F/WS-I-F): hypothesis signals are expected no-fires on a fully cleaned modern Magisk namespace — absence of signals is not evidence of a clean device. If evidence-backed signals don't reach `minScore`, add signals — never inflate weights.
+- Weight recovery gates: `denylist_unmount` (5) / `overlayfs` (10) may only rise after zero clean-corpus FPs **and** ≥1 committed reproducible TP fixture (Magisk/Kitsune partial cleanup; KSU/APatch root-level overlays; adb-remount/GSI). Clean fixtures: `cpp/tests/MountCorpusTests.cpp`.
+- iOS measurement matrix: rootless `/var/jb` + dangling-symlink TPs, dyld provenance TPs, live scheme-probe check post-plist-fix, roothide expected-FN pinning, TrollStore zero-observable confirmation. Parked ids (`ios.sideload.trollstore`, `ios.jailbreak.{dopamine,palera1n}`) re-arm only with verified observables.
+- Corpus tooling: diagnostics export card ships in `example/src/App.tsx` (evidence-level JSON via share sheet, watchdog `LOG_ONLY` only). Raw app-namespace `/proc/self/mountinfo` still requires in-process capture — adb shell sees a different namespace.
+- Dated external refs (recheck before acting): Magisk master `native/src/core/mount.rs` `revert_unmount()` + `zygisk/hook.cpp` `DO_REVERT_UNMOUNT` (Aug 2026); AOSP `fs_mgr/README.overlayfs.md`; AnyCheck issue #19 (2026-06-28, stock Xiaomi OEM overlays); Apple `canOpenURL` docs (undeclared → always false; caps 50 linked≥iOS 15, 25 linked≥iOS 27); The Apple Wiki "Roothide" (2026-08-03); opa334/TrollStore README (`apple-magnifier://` hijack since v1.3, 2022-10).
 
 ## Documentation and contribution requirements
 

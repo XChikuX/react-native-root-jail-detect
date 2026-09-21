@@ -14,6 +14,7 @@
 #include "HybridSecurityWatchdog.hpp"
 #include "HybridUrlSchemeProbeSpecSwift.hpp"
 #include "HybridPackageManagerProbe.hpp"
+#include "HybridAppStoreReceiptProbeSpecSwift.hpp"
 
 @interface RootJailDetectAutolinking : NSObject
 @end
@@ -56,6 +57,13 @@
                     "The HybridObject \"HybridPackageManagerProbe\" is not default-constructible! "
                     "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
       return std::make_shared<HybridPackageManagerProbe>();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "AppStoreReceiptProbe",
+    []() -> std::shared_ptr<HybridObject> {
+      std::shared_ptr<HybridAppStoreReceiptProbeSpec> hybridObject = RootJailDetect::RootJailDetectAutolinking::createAppStoreReceiptProbe();
+      return hybridObject;
     }
   );
 }

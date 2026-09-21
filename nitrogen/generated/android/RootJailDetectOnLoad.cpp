@@ -20,6 +20,7 @@
 #include "HybridSecurityWatchdog.hpp"
 #include "HybridUrlSchemeProbe.hpp"
 #include <NitroModules/DefaultConstructableObject.hpp>
+#include "HybridAppStoreReceiptProbe.hpp"
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -77,6 +78,15 @@ void registerAllNatives() {
     "PackageManagerProbe",
     []() -> std::shared_ptr<HybridObject> {
       return JHybridPackageManagerProbeSpecImpl::create();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "AppStoreReceiptProbe",
+    []() -> std::shared_ptr<HybridObject> {
+      static_assert(std::is_default_constructible_v<HybridAppStoreReceiptProbe>,
+                    "The HybridObject \"HybridAppStoreReceiptProbe\" is not default-constructible! "
+                    "Create a public constructor that takes zero arguments to be able to autolink this HybridObject.");
+      return std::make_shared<HybridAppStoreReceiptProbe>();
     }
   );
 }

@@ -1,5 +1,6 @@
 import type { HybridObject } from 'react-native-nitro-modules';
 import type { CompromiseAssessment } from './CompromiseAssessment';
+import type { InstallOrigin } from './InstallOrigin';
 import type { RootJailDetectOptions } from './RootJailDetectOptions';
 import type { SecurityWatchdog } from './SecurityWatchdog.nitro';
 
@@ -54,6 +55,22 @@ export interface RootJailDetect
    * `checkDetailed()`; the two names are behaviorally identical.
    */
   assessRisk?(): Promise<CompromiseAssessment>;
+
+  /**
+   * Resolve where the running app was installed from, on a best-effort
+   * informational basis. See {@linkcode InstallOrigin} for per-platform
+   * semantics and limitations.
+   *
+   * Returns a Promise because on Android this performs a PackageManager
+   * binder query that must not block the JS caller thread. Any probe failure
+   * resolves to `'unknown'` rather than rejecting; inability to inspect is
+   * never a claim.
+   *
+   * This is provenance, not attestation: it never contributes to the scored
+   * {@linkcode CompromiseAssessment} and has no corresponding signal id on
+   * iOS. Pair with Play Integrity / App Attest for authenticity decisions.
+   */
+  getInstallOrigin(): Promise<InstallOrigin>;
   /**
    * Create or return the singleton {@linkcode SecurityWatchdog} owned by this
    * root object. The watchdog consumes {@linkcode RootJailDetect.checkDetailed}

@@ -8,18 +8,24 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `HybridAppStoreReceiptProbeSpec` to properly resolve imports.
+namespace margelo::nitro::rootjaildetect { class HybridAppStoreReceiptProbeSpec; }
 // Forward declaration of `HybridUrlSchemeProbeSpec` to properly resolve imports.
 namespace margelo::nitro::rootjaildetect { class HybridUrlSchemeProbeSpec; }
 
 // Forward declarations of Swift defined types
+// Forward declaration of `HybridAppStoreReceiptProbeSpec_cxx` to properly resolve imports.
+namespace RootJailDetect { class HybridAppStoreReceiptProbeSpec_cxx; }
 // Forward declaration of `HybridUrlSchemeProbeSpec_cxx` to properly resolve imports.
 namespace RootJailDetect { class HybridUrlSchemeProbeSpec_cxx; }
 
 // Include C++ defined types
+#include "HybridAppStoreReceiptProbeSpec.hpp"
 #include "HybridUrlSchemeProbeSpec.hpp"
 #include <NitroModules/Result.hpp>
 #include <exception>
 #include <memory>
+#include <string>
 
 /**
  * Contains specialized versions of C++ templated types so they can be accessed from Swift,
@@ -27,6 +33,27 @@ namespace RootJailDetect { class HybridUrlSchemeProbeSpec_cxx; }
  */
 namespace margelo::nitro::rootjaildetect::bridge::swift {
 
+  // pragma MARK: std::shared_ptr<HybridAppStoreReceiptProbeSpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridAppStoreReceiptProbeSpec>`.
+   */
+  using std__shared_ptr_HybridAppStoreReceiptProbeSpec_ = std::shared_ptr<HybridAppStoreReceiptProbeSpec>;
+  std::shared_ptr<HybridAppStoreReceiptProbeSpec> create_std__shared_ptr_HybridAppStoreReceiptProbeSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridAppStoreReceiptProbeSpec_(std__shared_ptr_HybridAppStoreReceiptProbeSpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridAppStoreReceiptProbeSpec>
+  using std__weak_ptr_HybridAppStoreReceiptProbeSpec_ = std::weak_ptr<HybridAppStoreReceiptProbeSpec>;
+  inline std__weak_ptr_HybridAppStoreReceiptProbeSpec_ weakify_std__shared_ptr_HybridAppStoreReceiptProbeSpec_(const std::shared_ptr<HybridAppStoreReceiptProbeSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<std::string>
+  using Result_std__string_ = Result<std::string>;
+  inline Result_std__string_ create_Result_std__string_(const std::string& value) noexcept {
+    return Result<std::string>::withValue(value);
+  }
+  inline Result_std__string_ create_Result_std__string_(const std::exception_ptr& error) noexcept {
+    return Result<std::string>::withError(error);
+  }
+  
   // pragma MARK: std::shared_ptr<HybridUrlSchemeProbeSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridUrlSchemeProbeSpec>`.

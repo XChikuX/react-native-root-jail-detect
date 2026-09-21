@@ -8,6 +8,7 @@
 export type { CompromiseAssessment, DeviceRiskResult } from './CompromiseAssessment';
 export type { Confidence } from './Confidence';
 export type { DetectionSignal } from './DetectionSignal';
+export type { InstallOrigin } from './InstallOrigin';
 export type { Platform } from './Platform';
 export type { ProtectionMode } from './ProtectionMode';
 export type { RootJailDetect } from './RootJailDetect.nitro';

@@ -23,4 +23,16 @@ public final class RootJailDetectAutolinking {
   public static func isUrlSchemeProbeRecyclable() -> Bool {
     return HybridUrlSchemeProbe.self is any RecyclableView.Type
   }
+  
+  public static func createAppStoreReceiptProbe() -> bridge.std__shared_ptr_HybridAppStoreReceiptProbeSpec_ {
+    let hybridObject = HybridAppStoreReceiptProbe()
+    return { () -> bridge.std__shared_ptr_HybridAppStoreReceiptProbeSpec_ in
+      let __cxxWrapped = hybridObject.getCxxWrapper()
+      return __cxxWrapped.getCxxPart()
+    }()
+  }
+  
+  public static func isAppStoreReceiptProbeRecyclable() -> Bool {
+    return HybridAppStoreReceiptProbe.self is any RecyclableView.Type
+  }
 }

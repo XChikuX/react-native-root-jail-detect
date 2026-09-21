@@ -40,6 +40,16 @@
         "language": "kotlin",
         "implementationClassName": "HybridPackageManagerProbe"
       }
+    },
+    "AppStoreReceiptProbe": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridAppStoreReceiptProbe"
+      },
+      "android": {
+        "language": "c++",
+        "implementationClassName": "HybridAppStoreReceiptProbe"
+      }
     }
   },
   "ignorePaths": ["**/node_modules", "**/example", "**/lib"],

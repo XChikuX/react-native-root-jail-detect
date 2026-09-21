@@ -17,12 +17,15 @@
 namespace margelo::nitro::rootjaildetect { struct RootJailDetectOptions; }
 // Forward declaration of `CompromiseAssessment` to properly resolve imports.
 namespace margelo::nitro::rootjaildetect { struct CompromiseAssessment; }
+// Forward declaration of `InstallOrigin` to properly resolve imports.
+namespace margelo::nitro::rootjaildetect { enum class InstallOrigin; }
 // Forward declaration of `HybridSecurityWatchdogSpec` to properly resolve imports.
 namespace margelo::nitro::rootjaildetect { class HybridSecurityWatchdogSpec; }
 
 #include "RootJailDetectOptions.hpp"
 #include "CompromiseAssessment.hpp"
 #include <NitroModules/Promise.hpp>
+#include "InstallOrigin.hpp"
 #include <memory>
 #include "HybridSecurityWatchdogSpec.hpp"
 
@@ -60,6 +63,7 @@ namespace margelo::nitro::rootjaildetect {
       virtual void configure(const RootJailDetectOptions& options) = 0;
       virtual std::shared_ptr<Promise<CompromiseAssessment>> checkDetailed() = 0;
       virtual std::shared_ptr<Promise<CompromiseAssessment>> assessRisk() = 0;
+      virtual std::shared_ptr<Promise<InstallOrigin>> getInstallOrigin() = 0;
       virtual std::shared_ptr<HybridSecurityWatchdogSpec> getWatchdog() = 0;
 
     protected:

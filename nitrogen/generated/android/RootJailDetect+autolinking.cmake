@@ -33,6 +33,7 @@ target_sources(
   # Autolinking Setup
   ../nitrogen/generated/android/RootJailDetectOnLoad.cpp
   # Shared Nitrogen C++ sources
+  ../nitrogen/generated/shared/c++/HybridAppStoreReceiptProbeSpec.cpp
   ../nitrogen/generated/shared/c++/HybridPackageManagerProbeSpec.cpp
   ../nitrogen/generated/shared/c++/HybridRootJailDetectSpec.cpp
   ../nitrogen/generated/shared/c++/HybridSecurityWatchdogSpec.cpp

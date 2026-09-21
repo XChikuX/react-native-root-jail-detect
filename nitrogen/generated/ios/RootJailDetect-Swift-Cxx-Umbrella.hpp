@@ -8,10 +8,13 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `HybridAppStoreReceiptProbeSpec` to properly resolve imports.
+namespace margelo::nitro::rootjaildetect { class HybridAppStoreReceiptProbeSpec; }
 // Forward declaration of `HybridUrlSchemeProbeSpec` to properly resolve imports.
 namespace margelo::nitro::rootjaildetect { class HybridUrlSchemeProbeSpec; }
 
 // Include C++ defined types
+#include "HybridAppStoreReceiptProbeSpec.hpp"
 #include "HybridUrlSchemeProbeSpec.hpp"
 #include <NitroModules/Result.hpp>
 #include <exception>
@@ -28,6 +31,8 @@ namespace margelo::nitro::rootjaildetect { class HybridUrlSchemeProbeSpec; }
 #include <NitroModules/DateToChronoDate.hpp>
 
 // Forward declarations of Swift defined types
+// Forward declaration of `HybridAppStoreReceiptProbeSpec_cxx` to properly resolve imports.
+namespace RootJailDetect { class HybridAppStoreReceiptProbeSpec_cxx; }
 // Forward declaration of `HybridUrlSchemeProbeSpec_cxx` to properly resolve imports.
 namespace RootJailDetect { class HybridUrlSchemeProbeSpec_cxx; }
 

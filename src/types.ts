@@ -12,6 +12,7 @@ export type {
   Confidence,
   DetectionSignal,
   DeviceRiskResult,
+  InstallOrigin,
   Platform,
   ProtectionMode,
   RootJailDetectOptions,

@@ -11,6 +11,16 @@ A **React Native Nitro Module** (New Architecture only) for detecting rooted (An
 
 ---
 
+## Screenshots
+
+| Legacy boolean checks | Scored result, watchdog & diagnostics |
+| --- | --- |
+| <img src="example/1.jpeg" width="300" alt="Example app: Device Security Check screen showing Device Compromised (NO), Emulator/Simulator (YES), Debugger Attached (NO), Install Origin (unknown) and Detailed Risk Result (score 20)" /> | <img src="example/2.jpeg" width="300" alt="Example app: Detailed Risk Result with ios.simulator signal, Recheck Security button, running LOG_ONLY Security Watchdog and Measurement Diagnostics export" /> |
+
+*The demo app in [`example/`](example) exercising both the legacy boolean API and the scored `checkDetailed()` API on an iOS simulator.*
+
+---
+
 ## Installation
 
 ```sh

@@ -76,37 +76,42 @@ namespace margelo::nitro::rootjaildetect {
 
   std::shared_ptr<Promise<InstallOrigin>> HybridRootJailDetect::getInstallOrigin() {
     // Provenance resolution is informational and never feeds the scored
-    // signal catalog. We still run it on a Nitro worker thread (Promise::async)
-    // because the Android path makes a PackageManager binder query that
-    // must not block the JS caller thread.
-    return Promise<InstallOrigin>::async([]() -> InstallOrigin {
+    // signal catalog. It must not block the JS caller thread, so the Android
+    // PackageManager binder query runs on a Nitro worker thread and the iOS
+    // StoreKit verification runs in the Swift probe's own Task.
 #if defined(__APPLE__)
-      // iOS path: Swift receipt probe. The probe lookup follows the same
-      // pattern used by `IOSChecks.cpp` for `UrlSchemeProbe` — iOS is safe
-      // to construct synchronously (no fbjni/ThreadScope required), and the
-      // Swift edge returns immediately because Foundation file-exists is
-      // a fast stat, not a UIKit dispatch.
-      std::shared_ptr<HybridAppStoreReceiptProbeSpec> probe;
-      try {
-        std::shared_ptr<margelo::nitro::HybridObject> object =
-          margelo::nitro::HybridObjectRegistry::createHybridObject("AppStoreReceiptProbe");
-        probe = std::dynamic_pointer_cast<HybridAppStoreReceiptProbeSpec>(object);
-      } catch (...) {
-        probe = nullptr;
-      }
-      if (!probe) {
-        probe = std::make_shared<HybridAppStoreReceiptProbe>();
-      }
-      std::string state = "none";
-      try {
-        state = probe->getReceiptState();
-      } catch (...) {
-        // Swift `throws` paths and registry construction failures must both
-        // resolve to unknown — never to a claimed origin.
-        state = "none";
-      }
-      return resolveIOSInstallOrigin(state);
+    // iOS path: Swift App Store probe. The probe lookup follows the same
+    // pattern used by `IOSChecks.cpp` for `UrlSchemeProbe` — iOS is safe to
+    // construct synchronously (no fbjni/ThreadScope required). The probe
+    // itself is async (StoreKit 2 `AppTransaction.shared`), so chain its
+    // Promise rather than blocking a worker thread on it.
+    std::shared_ptr<HybridAppStoreReceiptProbeSpec> probe;
+    try {
+      std::shared_ptr<margelo::nitro::HybridObject> object =
+        margelo::nitro::HybridObjectRegistry::createHybridObject("AppStoreReceiptProbe");
+      probe = std::dynamic_pointer_cast<HybridAppStoreReceiptProbeSpec>(object);
+    } catch (...) {
+      probe = nullptr;
+    }
+    if (!probe) {
+      probe = std::make_shared<HybridAppStoreReceiptProbe>();
+    }
+    std::shared_ptr<Promise<InstallOrigin>> result = Promise<InstallOrigin>::create();
+    try {
+      std::shared_ptr<Promise<std::string>> statePromise = probe->getReceiptState();
+      // A rejected probe (Swift `throws`, StoreKit failure, registry miss)
+      // or an unexpected value must collapse to UNKNOWN — never to a claimed
+      // origin. Inability to inspect is not evidence of sideloading.
+      statePromise->addOnResolvedListener(
+        [result](const std::string& state) { result->resolve(resolveIOSInstallOrigin(state)); });
+      statePromise->addOnRejectedListener(
+        [result](const std::exception_ptr&) { result->resolve(InstallOrigin::UNKNOWN); });
+    } catch (...) {
+      result->resolve(InstallOrigin::UNKNOWN);
+    }
+    return result;
 #else
+    return Promise<InstallOrigin>::async([]() -> InstallOrigin {
       // Android path: PackageManager installer record. The PackageManager
       // binder call lives inside the Kotlin edge, so we delegate through the
       // same HybridObject pattern. Failure modes (registry miss, R8 rename,
@@ -130,8 +135,8 @@ namespace margelo::nitro::rootjaildetect {
         installer = std::nullopt;
       }
       return resolveAndroidInstallOrigin(installer);
-#endif
     });
+#endif
   }
 
   std::shared_ptr<HybridSecurityWatchdogSpec> HybridRootJailDetect::getWatchdog() {

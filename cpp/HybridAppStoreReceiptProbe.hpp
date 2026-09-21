@@ -17,6 +17,8 @@
 
 #include "HybridAppStoreReceiptProbeSpec.hpp"
 
+#include <NitroModules/Promise.hpp>
+
 #include <cstddef>
 #include <string>
 
@@ -27,7 +29,7 @@ namespace margelo::nitro::rootjaildetect {
     HybridAppStoreReceiptProbe();
 
   public:
-    std::string getReceiptState() override;
+    std::shared_ptr<Promise<std::string>> getReceiptState() override;
 
   public:
     size_t getExternalMemorySize() noexcept override;

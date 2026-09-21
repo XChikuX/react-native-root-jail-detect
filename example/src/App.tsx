@@ -253,9 +253,10 @@ function App() {
               </View>
               <Text style={styles.resultDescription}>
                 Best-effort provenance. Android reads the installer record
-                (Google Play, other, or unknown for ADB/system). iOS reads the
-                App Store receipt (app_store, testflight, or unknown for
-                dev/simulator/sideloaded). Informational only — does not
+                (Google Play, other, or unknown for ADB/system). iOS uses
+                StoreKit 2 on iOS 16+ (verified AppTransaction) and the
+                legacy receipt on iOS 15 (app_store, testflight, or unknown
+                for dev/simulator/sideloaded). Informational only — does not
                 affect the compromised flag.
               </Text>
             </View>

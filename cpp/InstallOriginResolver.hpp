@@ -38,18 +38,20 @@ namespace margelo::nitro::rootjaildetect {
   /**
    * Resolve the current install origin on iOS.
    *
-   * @param receiptState  String returned by the Swift
-   *                      `HybridAppStoreReceiptProbe.getReceiptState()`:
-   *                      `"app_store"`, `"sandbox"`, or `"none"`. Anything
-   *                      else is treated as `"none"` (defensive parse — the
-   *                      Swift side's contract is those three values only).
+   * @param receiptState  String resolved by the Swift
+   *                      `HybridAppStoreReceiptProbe.getReceiptState()`
+   *                      Promise: `"app_store"`, `"sandbox"`, or `"none"`.
+   *                      Anything else is treated as `"none"` (defensive
+   *                      parse — the Swift side's contract is those three
+   *                      values only).
    *
    * @return `InstallOrigin::APP_STORE` for `"app_store"`,
    *         `InstallOrigin::TESTFLIGHT` for `"sandbox"`, and
    *         `InstallOrigin::UNKNOWN` for `"none"` or any unexpected value.
-   *         iOS never resolves to `OTHER`: receipt absence is legitimate in
-   *         too many benign states (Xcode/dev, simulator, sideloaded,
-   *         enterprise, transiently-missing) to be evidence of sideloading.
+   *         iOS never resolves to `OTHER`: absence or unverifiability is
+   *         legitimate in too many benign states (Xcode/dev, simulator,
+   *         sideloaded, enterprise, transiently-missing) to be evidence of
+   *         sideloading.
    */
   InstallOrigin resolveIOSInstallOrigin(const std::string& receiptState) noexcept;
 

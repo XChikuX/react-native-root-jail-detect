@@ -16,6 +16,7 @@
 
 
 #include <string>
+#include <NitroModules/Promise.hpp>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -48,7 +49,7 @@ namespace margelo::nitro::rootjaildetect {
 
     public:
       // Methods
-      virtual std::string getReceiptState() = 0;
+      virtual std::shared_ptr<Promise<std::string>> getReceiptState() = 0;
 
     protected:
       // Hybrid Setup

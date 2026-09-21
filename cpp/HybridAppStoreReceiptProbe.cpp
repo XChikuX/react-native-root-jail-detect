@@ -11,12 +11,12 @@ namespace margelo::nitro::rootjaildetect {
   // constructor would hit Nitro's throwing default `HybridObject()` instead.
   HybridAppStoreReceiptProbe::HybridAppStoreReceiptProbe() : HybridObject(TAG) {}
 
-  std::string HybridAppStoreReceiptProbe::getReceiptState() {
+  std::shared_ptr<Promise<std::string>> HybridAppStoreReceiptProbe::getReceiptState() {
     // No-op on Android and on host builds; the real implementation is the
-    // Swift `HybridAppStoreReceiptProbe` on iOS. Return `"none"` so the
-    // resolver's conservative "absence is unknown" rule takes over, never a
-    // claim of App Store provenance.
-    return "none";
+    // Swift `HybridAppStoreReceiptProbe` on iOS. Return an already-resolved
+    // `"none"` so the resolver's conservative "absence is unknown" rule takes
+    // over, never a claim of App Store provenance.
+    return Promise<std::string>::resolved("none");
   }
 
   size_t HybridAppStoreReceiptProbe::getExternalMemorySize() noexcept {

@@ -13,7 +13,7 @@ public protocol HybridAppStoreReceiptProbeSpec_protocol: HybridObject {
   
 
   // Methods
-  func getReceiptState() throws -> String
+  func getReceiptState() throws -> Promise<String>
 }
 
 public extension HybridAppStoreReceiptProbeSpec_protocol {

@@ -15,6 +15,22 @@
 
 namespace margelo::nitro::rootjaildetect::bridge::swift {
 
+  // pragma MARK: std::function<void(const std::string& /* result */)>
+  Func_void_std__string create_Func_void_std__string(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = RootJailDetect::Func_void_std__string::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::string& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
+  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = RootJailDetect::Func_void_std__exception_ptr::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::exception_ptr& error) mutable -> void {
+      swiftClosure.call(error);
+    };
+  }
+  
   // pragma MARK: std::shared_ptr<HybridAppStoreReceiptProbeSpec>
   std::shared_ptr<HybridAppStoreReceiptProbeSpec> create_std__shared_ptr_HybridAppStoreReceiptProbeSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
     RootJailDetect::HybridAppStoreReceiptProbeSpec_cxx swiftPart = RootJailDetect::HybridAppStoreReceiptProbeSpec_cxx::fromUnsafe(swiftUnsafePointer);

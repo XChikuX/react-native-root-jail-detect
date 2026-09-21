@@ -6,15 +6,20 @@
  *   A missing record (ADB, system installs, uninstalled installer app)
  *   resolves to `'unknown'`; an explicitly recorded installer other than
  *   Google Play resolves to `'other'`.
- * - iOS: derived from the App Store receipt inside the app bundle. A signed
- *   production receipt resolves to `'app_store'`, the sandbox receipt used by
- *   TestFlight resolves to `'testflight'`, and every other state (Xcode/dev
- *   installs, simulator, sideloaded, enterprise, or a transiently missing
+ * - iOS: derived from StoreKit. On iOS 16+ StoreKit cryptographically
+ *   verifies the app transaction (`AppTransaction`) before it is surfaced as
+ *   `.verified`: a production environment resolves to `'app_store'` and a
+ *   sandbox environment (TestFlight or StoreKit sandbox) resolves to
+ *   `'testflight'`. On iOS 15 the probe falls back to the legacy App Store
+ *   receipt (`StoreKit/receipt` → `'app_store'`,
+ *   `StoreKit/sandboxReceipt` → `'testflight'`), which is existence-only and
+ *   spoofable. Every other state (Xcode/dev installs, simulator, sideloaded,
+ *   enterprise, an unverifiable transaction, or a transiently missing
  *   receipt) resolves to `'unknown'`.
  *
- * iOS deliberately never resolves to `'other'`: receipt absence is legitimate
- * in too many benign states to be evidence of sideloading, so the value is
- * informational on iOS and never feeds the scored signal catalog. Use
+ * iOS deliberately never resolves to `'other'`: absence or unverifiability is
+ * legitimate in too many benign states to be evidence of sideloading, so the
+ * value is informational on iOS and never feeds the scored signal catalog. Use
  * DeviceCheck / App Attest for cryptographic install verification.
  */
 export type InstallOrigin =

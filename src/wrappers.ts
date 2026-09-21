@@ -290,9 +290,11 @@ export async function isEmulator(): Promise<boolean> {
  * - Android: `'google_play'` for an explicit Google Play installer record,
  *   `'other'` for any other recognized installer, `'unknown'` for missing
  *   records (ADB/system installs) or probe failure.
- * - iOS: `'app_store'` for a production receipt, `'testflight'` for the
- *   sandbox receipt, `'unknown'` for Xcode/dev/simulator/sideloaded/enterprise
- *   builds or receipt probe failure. iOS never resolves to `'other'`.
+ * - iOS: `'app_store'` for a StoreKit-verified production install (iOS 16+)
+ *   or a production receipt (iOS 15 fallback), `'testflight'` for a sandbox
+ *   install (TestFlight or StoreKit sandbox), `'unknown'` for
+ *   Xcode/dev/simulator/sideloaded/enterprise builds, an unverifiable
+ *   transaction, or probe failure. iOS never resolves to `'other'`.
  *
  * This is provenance, not attestation. It does not contribute to
  * {@linkcode checkDetailed} and never affects the compromise threshold.

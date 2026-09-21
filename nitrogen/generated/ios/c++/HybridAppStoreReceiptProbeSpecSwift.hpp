@@ -15,6 +15,7 @@ namespace RootJailDetect { class HybridAppStoreReceiptProbeSpec_cxx; }
 
 
 #include <string>
+#include <NitroModules/Promise.hpp>
 
 #include "RootJailDetect-Swift-Cxx-Umbrella.hpp"
 
@@ -66,7 +67,7 @@ namespace margelo::nitro::rootjaildetect {
 
   public:
     // Methods
-    inline std::string getReceiptState() override {
+    inline std::shared_ptr<Promise<std::string>> getReceiptState() override {
       auto __result = _swiftPart.getReceiptState();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());

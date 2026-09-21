@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import type {
   CompromiseAssessment,
+  InstallOrigin,
   ProtectionMode,
   RootJailDetect,
   RootJailDetectOptions,
@@ -282,6 +283,32 @@ export async function isEmulator(): Promise<boolean> {
  *
  * @returns Promise that resolves to `true` if a debugger is attached.
  */
+/**
+ * Resolve the best-effort install origin of the running app.
+ *
+ * Returns the platform-prefixed union:
+ * - Android: `'google_play'` for an explicit Google Play installer record,
+ *   `'other'` for any other recognized installer, `'unknown'` for missing
+ *   records (ADB/system installs) or probe failure.
+ * - iOS: `'app_store'` for a production receipt, `'testflight'` for the
+ *   sandbox receipt, `'unknown'` for Xcode/dev/simulator/sideloaded/enterprise
+ *   builds or receipt probe failure. iOS never resolves to `'other'`.
+ *
+ * This is provenance, not attestation. It does not contribute to
+ * {@linkcode checkDetailed} and never affects the compromise threshold.
+ * Errors are logged and the safe `'unknown'` fallback is returned, matching
+ * the error semantics of {@linkcode isEmulator} and
+ * {@linkcode isDebuggerAttached}.
+ */
+export async function getInstallOrigin(): Promise<InstallOrigin> {
+  try {
+    return await getRoot().getInstallOrigin();
+  } catch (error) {
+    console.error('Error resolving install origin:', error);
+    return 'unknown';
+  }
+}
+
 export async function isDebuggerAttached(): Promise<boolean> {
   try {
     const result = await getRoot().checkDetailed();

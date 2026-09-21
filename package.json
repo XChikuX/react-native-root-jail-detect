@@ -200,7 +200,7 @@
     "release:preflight": "bun run typecheck && bun run lint && bun run test --maxWorkers=2 && bun run build && bun run native-test",
     "release:android": "cd example/android && ./gradlew app:bundleDebug --no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a",
     "release:pods": "cd example/ios && pod install --no-repo-update",
-    "native-test": "c++ -std=c++20 -Wall -Wextra -DROOTJAILDETECT_HOST_TEST -Icpp cpp/tests/*.cpp cpp/ProcParsers.cpp cpp/SignalCatalog.cpp -o /tmp/anti-jailbreak-proc-tests && /tmp/anti-jailbreak-proc-tests",
+    "native-test": "c++ -std=c++20 -Wall -Wextra -DROOTJAILDETECT_HOST_TEST -Icpp cpp/tests/*.cpp cpp/ProcParsers.cpp cpp/SignalCatalog.cpp cpp/InstallOriginResolver.cpp -o /tmp/anti-jailbreak-proc-tests && /tmp/anti-jailbreak-proc-tests",
     "specs": "nitrogen",
     "test": "jest",
     "typecheck": "tsc"

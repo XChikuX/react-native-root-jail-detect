@@ -16,6 +16,7 @@
 #include "HybridRootJailDetect.hpp"
 #include "HybridSecurityWatchdog.hpp"
 #include "HybridUrlSchemeProbe.hpp"
+#include "HybridAppStoreReceiptProbe.hpp"
 
 // Include the generated registration header
 #include "RootJailDetectOnLoad.hpp"
@@ -71,5 +72,6 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
     registerCxxHybridObject<HybridRootJailDetect>("RootJailDetect");
     registerCxxHybridObject<HybridSecurityWatchdog>("SecurityWatchdog");
     registerCxxHybridObject<HybridUrlSchemeProbe>("UrlSchemeProbe");
+    registerCxxHybridObject<HybridAppStoreReceiptProbe>("AppStoreReceiptProbe");
   });
 }

@@ -28,8 +28,10 @@ add_library(
   ../cpp/AndroidChecks.cpp
   ../cpp/IOSChecks.cpp
   ../cpp/TcpProbe.cpp
+  ../cpp/InstallOriginResolver.cpp
   ../cpp/HybridUrlSchemeProbe.cpp
   ../cpp/HybridPackageManagerProbe.cpp
+  ../cpp/HybridAppStoreReceiptProbe.cpp
   # JNI_OnLoad entry point for Nitro Modules autolinking
   ../cpp/cpp-adapter.cpp
 )

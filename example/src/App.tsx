@@ -16,9 +16,11 @@ import {
   checkDetailed,
   configure,
   getDetectionReasons,
+  getInstallOrigin,
   startSecurityWatchdog,
   stopSecurityWatchdog,
   type CompromiseAssessment,
+  type InstallOrigin,
 } from '@psync/anti-jailbreak';
 
 function App() {
@@ -26,6 +28,9 @@ function App() {
   const [isCompromised, setIsCompromised] = useState<boolean | null>(null);
   const [isEmu, setIsEmu] = useState<boolean | null>(null);
   const [isDebugger, setIsDebugger] = useState<boolean | null>(null);
+  const [installOrigin, setInstallOrigin] = useState<InstallOrigin | null>(
+    null
+  );
   const [detectionReasons, setDetectionReasons] = useState<string[]>([]);
   const [detailed, setDetailed] = useState<CompromiseAssessment | null>(null);
   const [watchdogRunning, setWatchdogRunning] = useState(false);
@@ -54,6 +59,9 @@ function App() {
       // Use the public wrapper so reasons stay human-readable and stay in sync
       // with the library's signal-id -> text catalog (avoids showing raw ids).
       setDetectionReasons(await getDetectionReasons());
+      // Provenance resolution is informational and never feeds the scored
+      // signal catalog. Errors collapse to `'unknown'` per the wrapper contract.
+      setInstallOrigin(await getInstallOrigin());
 
       if (result.compromised) {
         Alert.alert(
@@ -226,6 +234,29 @@ function App() {
               </View>
               <Text style={styles.resultDescription}>
                 Checks if debugger is currently attached
+              </Text>
+            </View>
+
+            <View style={styles.resultCard}>
+              <View style={styles.resultHeader}>
+                <Text style={styles.resultLabel}>Install Origin</Text>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    { backgroundColor: '#2962FF' },
+                  ]}
+                >
+                  <Text style={styles.statusText}>
+                    {installOrigin ?? 'unknown'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.resultDescription}>
+                Best-effort provenance. Android reads the installer record
+                (Google Play, other, or unknown for ADB/system). iOS reads the
+                App Store receipt (app_store, testflight, or unknown for
+                dev/simulator/sideloaded). Informational only — does not
+                affect the compromised flag.
               </Text>
             </View>
 

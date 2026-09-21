@@ -21,11 +21,15 @@
 
 using namespace margelo::nitro::rootjaildetect;
 
+// Forward declarations from sibling test suites. Each suite owns a single
+// `run*Tests()` entry point; this file is the single `main()` owner so the
+// link step does not see duplicate symbols.
 void runDenyListFingerprintTests();
 void runOverlayFsTests();
 void runMountCorpusTests();
-void runIOSMatcherTests();
 void runScoringTests();
+void runIOSMatcherTests();
+void runInstallOriginResolverTests();
 
 int main() {
   // ---- `/proc/self/maps`: hook artifacts ----------------------------------
@@ -381,6 +385,10 @@ int main() {
   runMountCorpusTests();
   runIOSMatcherTests();
   runScoringTests();
+
+  // Cross-platform install-origin provenance mapping (see
+  // cpp/InstallOriginResolver.{hpp,cpp}).
+  runInstallOriginResolverTests();
 
   return 0;
 }

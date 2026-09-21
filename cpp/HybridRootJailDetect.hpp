@@ -16,8 +16,11 @@
 
 #include "DeviceRiskAssessment.hpp"
 #include "HybridRootJailDetectSpec.hpp"
+#include "InstallOrigin.hpp"
+#include "InstallOriginResolver.hpp"
 
 #include <memory>
+#include <string>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -35,6 +38,7 @@ namespace margelo::nitro::rootjaildetect {
     void configure(const RootJailDetectOptions& options) override;
     std::shared_ptr<Promise<CompromiseAssessment>> checkDetailed() override;
     std::shared_ptr<Promise<CompromiseAssessment>> assessRisk() override;
+    std::shared_ptr<Promise<InstallOrigin>> getInstallOrigin() override;
     std::shared_ptr<HybridSecurityWatchdogSpec> getWatchdog() override;
 
   public:

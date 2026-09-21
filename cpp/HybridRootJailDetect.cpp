@@ -3,13 +3,18 @@
 ///
 
 #include "HybridRootJailDetect.hpp"
+#include "HybridAppStoreReceiptProbe.hpp"
+#include "HybridPackageManagerProbe.hpp"
 #include "HybridSecurityWatchdog.hpp"
 
+#include <NitroModules/HybridObjectRegistry.hpp>
 #include <NitroModules/Promise.hpp>
 
 #include <cmath>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
+#include <string>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -67,6 +72,66 @@ namespace margelo::nitro::rootjaildetect {
 
   std::shared_ptr<Promise<CompromiseAssessment>> HybridRootJailDetect::assessRisk() {
     return checkDetailed();
+  }
+
+  std::shared_ptr<Promise<InstallOrigin>> HybridRootJailDetect::getInstallOrigin() {
+    // Provenance resolution is informational and never feeds the scored
+    // signal catalog. We still run it on a Nitro worker thread (Promise::async)
+    // because the Android path makes a PackageManager binder query that
+    // must not block the JS caller thread.
+    return Promise<InstallOrigin>::async([]() -> InstallOrigin {
+#if defined(__APPLE__)
+      // iOS path: Swift receipt probe. The probe lookup follows the same
+      // pattern used by `IOSChecks.cpp` for `UrlSchemeProbe` — iOS is safe
+      // to construct synchronously (no fbjni/ThreadScope required), and the
+      // Swift edge returns immediately because Foundation file-exists is
+      // a fast stat, not a UIKit dispatch.
+      std::shared_ptr<HybridAppStoreReceiptProbeSpec> probe;
+      try {
+        std::shared_ptr<margelo::nitro::HybridObject> object =
+          margelo::nitro::HybridObjectRegistry::createHybridObject("AppStoreReceiptProbe");
+        probe = std::dynamic_pointer_cast<HybridAppStoreReceiptProbeSpec>(object);
+      } catch (...) {
+        probe = nullptr;
+      }
+      if (!probe) {
+        probe = std::make_shared<HybridAppStoreReceiptProbe>();
+      }
+      std::string state = "none";
+      try {
+        state = probe->getReceiptState();
+      } catch (...) {
+        // Swift `throws` paths and registry construction failures must both
+        // resolve to unknown — never to a claimed origin.
+        state = "none";
+      }
+      return resolveIOSInstallOrigin(state);
+#else
+      // Android path: PackageManager installer record. The PackageManager
+      // binder call lives inside the Kotlin edge, so we delegate through the
+      // same HybridObject pattern. Failure modes (registry miss, R8 rename,
+      // missing context) all collapse to UNKNOWN — inability to inspect is
+      // never evidence of sideloading.
+      std::shared_ptr<HybridPackageManagerProbeSpec> probe;
+      try {
+        std::shared_ptr<margelo::nitro::HybridObject> object =
+          margelo::nitro::HybridObjectRegistry::createHybridObject("PackageManagerProbe");
+        probe = std::dynamic_pointer_cast<HybridPackageManagerProbeSpec>(object);
+      } catch (...) {
+        probe = nullptr;
+      }
+      if (!probe) {
+        probe = std::make_shared<HybridPackageManagerProbe>();
+      }
+      std::optional<std::string> installer;
+      try {
+        installer = probe->getInstallerPackageName();
+      } catch (...) {
+        installer = std::nullopt;
+      }
+      return resolveAndroidInstallOrigin(installer);
+#endif
+    });
   }
 
   std::shared_ptr<HybridSecurityWatchdogSpec> HybridRootJailDetect::getWatchdog() {

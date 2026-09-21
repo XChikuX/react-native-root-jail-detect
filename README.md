@@ -7,7 +7,7 @@ A **React Native Nitro Module** (New Architecture only) for detecting rooted (An
 
 > **Security Note:** Client-side detection is a defense-in-depth heuristic, not a guarantee. Determined attackers can hook or bypass checks. Never use client booleans as sole authorization for sensitive actions—pair with backend Play Integrity / App Attest verification.
 
-> **Store-origin note:** On Android, the library flags an explicit installer of record other than Google Play (`com.android.vending`, plus the legacy `com.google.android.feedback` identity reported by pre-Android-11 Play installs). An absent installer record (common for ADB and system installs, or after the installer app was uninstalled) is unknown and does not trigger a finding. This is an unmeasured hypothesis signal that cannot mark a device compromised on its own; it is a local heuristic, not proof of app authenticity. iOS has no equivalent public installer API.
+> **Store-origin note:** The library exposes a best-effort `getInstallOrigin()` provenance getter, but it does **not** fire detection signals on iOS and the Android finding is purely informational. Android reads the installer record (Google Play vs. explicitly non-Play vs. unknown for ADB/system installs); iOS inspects the App Store receipt (`app_store` for `StoreKit/receipt`, `testflight` for `StoreKit/sandboxReceipt`, `unknown` for everything else). Receipt absence is legitimate in many benign states on iOS (Xcode/dev, simulator, sideloaded, enterprise, transiently-missing) and is never treated as a finding — pair with DeviceCheck / App Attest for cryptographic install verification.
 
 ---
 
@@ -344,6 +344,7 @@ async function fetchSessionToken() {
 - **`isEmulator(): Promise<boolean>`** — Returns `true` if running in an emulator/simulator. Returns `false` on error.
 - **`isDebuggerAttached(): Promise<boolean>`** — Returns `true` if a debugger is attached. Returns `false` on error.
 - **`getDetectionReasons(): Promise<string[]>`** — Returns human-readable reasons for fired signals. Returns `[]` on error.
+- **`getInstallOrigin(): Promise<InstallOrigin>`** — Best-effort install provenance. Returns `'google_play' | 'other' | 'unknown'` on Android (PackageManager installer record) and `'app_store' | 'testflight' | 'unknown'` on iOS (App Store receipt). Returns `'unknown'` on error. **Informational only** — never affects the scored `CompromiseAssessment` and cannot independently set `compromised`. Use DeviceCheck / App Attest for cryptographic install verification.
 - **`setDetectionCallback(cb): void`** — Register a callback invoked after each `checkDetailed()`/`assessRisk()` pass with the `CompromiseAssessment` and `{ platform, timestampMs }` metadata. Pass `undefined` to deregister. Callback exceptions are logged, never thrown.
 - **`startSecurityWatchdog(options): void`** — Periodically runs checks in background. `protectionMode` is `'LOG_ONLY' | 'THROW_EXCEPTION' | 'TERMINATE'`. Note: `THROW_EXCEPTION` is demoted to a logged warning on the background thread (it cannot throw into the JS runtime); `TERMINATE` ends the process. To react in app code, poll `checkDetailed()` / `isDeviceCompromised()` from JS.
 - **`stopSecurityWatchdog(): void`** — Stops the security watchdog thread.

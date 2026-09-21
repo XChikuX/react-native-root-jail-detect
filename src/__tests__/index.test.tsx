@@ -28,12 +28,15 @@ declare const __dirname: string;
 // type-checked.
 type CheckDetailedFn = () => Promise<unknown>;
 type ConfigureFn = (options: unknown) => void;
+type GetInstallOriginFn = () => Promise<string>;
 type WatchdogStartFn = (options: unknown) => Promise<void>;
 type WatchdogStopFn = () => Promise<void>;
 
 const mockCheckDetailed =
   jest.fn() as unknown as jest.MockedFunction<CheckDetailedFn>;
 const mockConfigure = jest.fn() as unknown as jest.MockedFunction<ConfigureFn>;
+const mockGetInstallOrigin =
+  jest.fn() as unknown as jest.MockedFunction<GetInstallOriginFn>;
 const mockWatchdogStart =
   jest.fn() as unknown as jest.MockedFunction<WatchdogStartFn>;
 const mockWatchdogStop =
@@ -47,6 +50,7 @@ const mockWatchdog = {
 const mockRoot = {
   checkDetailed: mockCheckDetailed,
   configure: mockConfigure,
+  getInstallOrigin: mockGetInstallOrigin,
   getWatchdog: jest.fn(() => mockWatchdog),
 };
 
@@ -68,6 +72,7 @@ const {
   isEmulator,
   isDebuggerAttached,
   getDetectionReasons,
+  getInstallOrigin,
   checkDetailed,
   assessRisk,
   configure,
@@ -742,6 +747,39 @@ describe('@psync/anti-jailbreak wrappers', () => {
       expect(
         declaredFields.map((f: string) => f.replace(/\s+SWIFT_PRIVATE/, ''))
       ).toEqual(standInFields);
+    });
+  });
+
+  // `getInstallOrigin()` is informational only — it never contributes to the
+  // scored signal catalog and never affects the compromise threshold. The
+  // wrapper must (a) forward the native union unchanged on success, (b) log
+  // and return the documented `'unknown'` fallback on rejection, matching the
+  // error semantics of `isEmulator` / `isDebuggerAttached`.
+  describe('getInstallOrigin()', () => {
+    it('returns the native union on success (iOS app_store)', async () => {
+      mockGetInstallOrigin.mockResolvedValueOnce('app_store');
+      await expect(getInstallOrigin()).resolves.toBe('app_store');
+      expect(mockGetInstallOrigin).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the native union on success (Android google_play)', async () => {
+      mockGetInstallOrigin.mockResolvedValueOnce('google_play');
+      await expect(getInstallOrigin()).resolves.toBe('google_play');
+    });
+
+    it('returns the native union on success (Android other)', async () => {
+      mockGetInstallOrigin.mockResolvedValueOnce('other');
+      await expect(getInstallOrigin()).resolves.toBe('other');
+    });
+
+    it('returns unknown on native rejection (does not throw)', async () => {
+      mockGetInstallOrigin.mockRejectedValueOnce(new Error('probe failed'));
+      const consoleError = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+      await expect(getInstallOrigin()).resolves.toBe('unknown');
+      expect(consoleError).toHaveBeenCalled();
+      consoleError.mockRestore();
     });
   });
 });

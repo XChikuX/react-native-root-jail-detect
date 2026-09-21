@@ -40,13 +40,14 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 
 ### Public JavaScript/TypeScript API
 
-- `src/specs/RootJailDetect.nitro.ts` — root HybridObject Nitro spec (`configure`, `checkDetailed`/`assessRisk`, `getWatchdog`). Source of truth for the native contract.
+- `src/specs/RootJailDetect.nitro.ts` — root HybridObject Nitro spec (`configure`, `checkDetailed`/`assessRisk`, `getInstallOrigin`, `getWatchdog`). Source of truth for the native contract.
 - `src/specs/SecurityWatchdog.nitro.ts` — watchdog HybridObject Nitro spec (`start`, `stop`, `isRunning`).
 - `src/specs/UrlSchemeProbe.nitro.ts` — **internal** iOS edge HybridObject Nitro spec (`canOpenUrl(scheme: string): boolean`). Not exported from `src/` and not referenced by any JS-facing API; consumed only by `cpp/IOSChecks.cpp`. Backed by Swift on iOS (`{ ios: 'swift'; android: 'c++' }`) and a no-op C++ stub on Android.
-- `src/specs/PackageManagerProbe.nitro.ts` — **internal** Android edge HybridObject Nitro spec (`getInstalledRootPackages()`, `getInstalledHidingPackages()`, `getInstalledRiskyPackages()`: `string[]`). Not exported from `src/` and not referenced by any JS-facing API; consumed only by `cpp/AndroidChecks.cpp`. Backed by Kotlin on Android (`{ ios: 'c++'; android: 'kotlin' }`) and a no-op C++ stub on iOS.
-- `src/specs/*.ts` — named codegen types (`CompromiseAssessment`, `DeviceRiskResult` (deprecated alias kept for backwards compatibility), `DetectionSignal`, `Severity`, `Confidence`, `Platform`, `ProtectionMode`, `RootJailDetectOptions`, `SecurityWatchdogOptions`, `SignalCategory`, `UrlSchemeOptions`). Each lives in its own file because Nitro requires named types for native codegen.
+- `src/specs/PackageManagerProbe.nitro.ts` — **internal** Android edge HybridObject Nitro spec (`getInstalledRootPackages()`, `getInstalledHidingPackages()`, `getInstalledRiskyPackages()`, `getInstallerPackageName()`). Not exported from `src/` and not referenced by any JS-facing API; consumed only by `cpp/AndroidChecks.cpp` and `cpp/HybridRootJailDetect.cpp` (install origin). Backed by Kotlin on Android (`{ ios: 'c++'; android: 'kotlin' }`) and a no-op C++ stub on iOS.
+- `src/specs/AppStoreReceiptProbe.nitro.ts` — **internal** iOS edge HybridObject Nitro spec (`getReceiptState(): string`, returning `'app_store'` / `'sandbox'` / `'none'`). Not exported from `src/` and not referenced by any JS-facing API; consumed only by `cpp/HybridRootJailDetect.cpp`. Backed by Swift on iOS (`{ ios: 'swift'; android: 'c++' }`) and a no-op C++ stub on Android. Existence-only receipt check — spoofable on jailbroken devices, so purely informational.
+- `src/specs/*.ts` — named codegen types (`CompromiseAssessment`, `DeviceRiskResult` (deprecated alias kept for backwards compatibility), `DetectionSignal`, `Severity`, `Confidence`, `Platform`, `ProtectionMode`, `RootJailDetectOptions`, `SecurityWatchdogOptions`, `SignalCategory`, `UrlSchemeOptions`, `InstallOrigin`). Each lives in its own file because Nitro requires named types for native codegen.
 - `src/specs/index.ts` — barrel re-exporting all spec types (specs themselves must not re-export unrelated types).
-- `src/wrappers.ts` — legacy boolean API (`isDeviceCompromised`, `isEmulator`, `isDebuggerAttached`, `getDetectionReasons`, `startSecurityWatchdog`, `stopSecurityWatchdog`) implemented as thin wrappers over `checkDetailed()`, plus the `setDetectionCallback` detection-event telemetry hook. Owns the lazily-created root HybridObject handle.
+- `src/wrappers.ts` — legacy boolean API (`isDeviceCompromised`, `isEmulator`, `isDebuggerAttached`, `getDetectionReasons`, `startSecurityWatchdog`, `stopSecurityWatchdog`) implemented as thin wrappers over `checkDetailed()`, plus the `setDetectionCallback` detection-event telemetry hook and `getInstallOrigin()` (informational provenance getter, safe `'unknown'` fallback on error, never a scored signal). Owns the lazily-created root HybridObject handle.
 - `src/index.tsx` — public entry point, barrel only (no logic; re-exports wrappers and spec types, plus a backwards-compatible default object).
 - `src/types.ts` — re-exports the public spec types for older import paths.
 - `src/__tests__/index.test.tsx` — Jest tests for the wrapper layer (mocks the native HybridObject before importing the entry point).
@@ -66,6 +67,8 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 - `cpp/TcpProbe.hpp` / `.cpp` — loopback TCP probes used by both platforms to detect Frida server (27042), SSH (22/44), and ADB (emulator) responders. Pure C++ with a small RAII `TcpSocket` wrapper; takes short non-blocking connect timeouts and releases the fd on every path. Compiled on both platforms under `#if defined(__ANDROID__)` / `#elif defined(__APPLE__)` includes; defines `SOCK_CLOEXEC` to `0` when the iOS SDK lacks it (the flag is Linux-only and the sockets are short-lived, so the no-op define is safe).
 - `cpp/HybridUrlSchemeProbe.hpp` / `.cpp` — no-op C++ stub of the `UrlSchemeProbe` HybridObject, used on Android and any host build where URL-scheme probing is iOS-only. The real implementation is the Swift `HybridUrlSchemeProbe` class reached through the generated Swift-C++ bridge on iOS; `cpp/IOSChecks.cpp` calls `probe->canOpenUrl(scheme)` once per scheme rather than passing a `string[]` across the Swift boundary (avoids `std::vector` Sequence-conformance interop).
 - `cpp/HybridPackageManagerProbe.hpp` / `.cpp` — no-op C++ stub of the `PackageManagerProbe` HybridObject, used on iOS and any host build where PackageManager queries are Android-only, and as the on-device fallback whenever the Kotlin edge cannot be reached (registry miss). The real implementation is the Kotlin `HybridPackageManagerProbe` edge class (`android/src/main/java/com/margelo/nitro/rootjaildetect/HybridPackageManagerProbe.kt`), reached through the generated Kotlin-C++ bridge on Android; `cpp/AndroidChecks.cpp` calls all three package-category methods once per pass. The stub's constructor explicitly calls `HybridObject(TAG)` — the generated spec inherits `HybridObject` **virtually**, so a defaulted constructor would invoke Nitro's intentionally throwing default `HybridObject()` and abort the process at the fallback construction site.
+- `cpp/HybridAppStoreReceiptProbe.hpp` / `.cpp` — no-op C++ stub of the `AppStoreReceiptProbe` HybridObject (returns `"none"`), used on Android and host builds. The real implementation is the Swift `HybridAppStoreReceiptProbe` edge class on iOS; `cpp/HybridRootJailDetect.cpp` reaches it via the registry for `getInstallOrigin()`. Same explicit `HybridObject(TAG)` constructor rule applies.
+- `cpp/InstallOriginResolver.hpp` / `.cpp` — pure install-origin mapping (receipt state → `InstallOrigin` on iOS, installer package → `InstallOrigin` on Android; iOS never resolves to `OTHER`, missing Android installer record → `UNKNOWN`). Host-tested in `cpp/tests/InstallOriginResolverTests.cpp`. Consumed by `getInstallOrigin()` in `cpp/HybridRootJailDetect.cpp`; deliberately separate from the scored signal path.
 
 ### Android
 
@@ -76,13 +79,14 @@ Do not use npm for repository development; the workspace and lockfile are Bun-ma
 
 ### iOS
 
-- `ios/HybridUrlSchemeProbe.swift` — Swift edge implementation of the `UrlSchemeProbe` HybridObject. The only Swift-backed HybridObject in this library (root and watchdog are pure C++). Implements `canOpenUrl(scheme: String) throws -> Bool` by dispatching to the main actor to call `UIApplication.canOpenURL(URL(string: "\(scheme)://")!)`. Reaches the shared application via an ObjC-runtime selector call (NOT `UIApplication.shared` — API-unavailable in extension targets — and NOT KVC, which can raise an ObjC exception Swift cannot catch). The C++ core (`cpp/IOSChecks.cpp`) calls it once per scheme so the Swift↔C++ boundary never crosses a `string[]`. The class `init()` is marked `override` to satisfy the nitrogen-generated `HybridUrlSchemeProbeSpec_base` designated initializer.
+- `ios/HybridUrlSchemeProbe.swift` — Swift edge implementation of the `UrlSchemeProbe` HybridObject. One of the two Swift-backed HybridObjects in this library (root and watchdog are pure C++). Implements `canOpenUrl(scheme: String) throws -> Bool` by dispatching to the main actor to call `UIApplication.canOpenURL(URL(string: "\(scheme)://")!)`. Reaches the shared application via an ObjC-runtime selector call (NOT `UIApplication.shared` — API-unavailable in extension targets — and NOT KVC, which can raise an ObjC exception Swift cannot catch). The C++ core (`cpp/IOSChecks.cpp`) calls it once per scheme so the Swift↔C++ boundary never crosses a `string[]`. The class `init()` is marked `override` to satisfy the nitrogen-generated `HybridUrlSchemeProbeSpec_base` designated initializer.
+- `ios/HybridAppStoreReceiptProbe.swift` — Swift edge implementation of the `AppStoreReceiptProbe` HybridObject. Implements `getReceiptState() throws -> String` by checking `Bundle.main.appStoreReceiptURL` existence and classifying by last path component (`receipt` → `'app_store'`, `sandboxReceipt` → `'sandbox'` for TestFlight, missing/unknown → `'none'`). Foundation-only, no main-actor hop needed; `init()` marked `override` like `HybridUrlSchemeProbe`. `appStoreReceiptURL` is deprecated since iOS 18 (StoreKit 2 `AppTransaction` is the modern replacement); the existence-only heuristic is intentionally kept for iOS 15/16 support and is documented as spoofable (positive direction) on jailbroken devices.
 - `ios/` (rest of the directory) — reserved for future Swift edge HybridObjects (for example, additional `_dyld` probes). The bulk of iOS detection lives in the shared C++ core at `cpp/IOSChecks.cpp` so the simulator/device branching, signal catalog, and scoring stay in one place.
 - `RootJailDetect.podspec` — CocoaPods spec; pulls in generated specs/bridges via `nitrogen/generated/ios/RootJailDetect+autolinking.rb` and the shared C++ sources from `cpp/**/*.{hpp,cpp}`. The autolinking `.rb` sets `SWIFT_OBJC_INTEROP_MODE = objcxx` (required for Swift↔C++ bridging).
 
 ### Generated Nitro code (committed, never hand-edited)
 
-- `nitro.json` — Nitrogen config: `cxxNamespace`, `iosModuleName`, `androidCxxLibName`, and the `autolinking` map. Four HybridObjects are autolinked: `RootJailDetect` and `SecurityWatchdog` are C++-backed via the `"all"` key; `UrlSchemeProbe` is Swift on iOS and a C++ stub on Android (matching `{ ios: 'swift'; android: 'c++' }` in `UrlSchemeProbe.nitro.ts`); `PackageManagerProbe` is Kotlin on Android and a C++ stub on iOS (matching `{ ios: 'c++'; android: 'kotlin' }` in `PackageManagerProbe.nitro.ts`).
+- `nitro.json` — Nitrogen config: `cxxNamespace`, `iosModuleName`, `androidCxxLibName`, and the `autolinking` map. Five HybridObjects are autolinked: `RootJailDetect` and `SecurityWatchdog` are C++-backed via the `"all"` key; `UrlSchemeProbe` is Swift on iOS and a C++ stub on Android (matching `{ ios: 'swift'; android: 'c++' }` in `UrlSchemeProbe.nitro.ts`); `PackageManagerProbe` is Kotlin on Android and a C++ stub on iOS (matching `{ ios: 'c++'; android: 'kotlin' }` in `PackageManagerProbe.nitro.ts`); `AppStoreReceiptProbe` is Swift on iOS and a C++ stub on Android (matching `{ ios: 'swift'; android: 'c++' }` in `AppStoreReceiptProbe.nitro.ts`).
 - `nitrogen/generated/` — codegen output. **Committed** (see `.gitignore` negation) and shipped in the npm package so consumers can build without running codegen. Includes:
   - `shared/c++/` — C++ spec abstract bases (`Hybrid*Spec.hpp/.cpp`) and struct/enum headers.
   - `android/` — `RootJailDetectOnLoad.cpp/.hpp/.kt`, `RootJailDetect+autolinking.cmake/.gradle`.
@@ -137,7 +141,7 @@ The public interval is milliseconds (`intervalMs` on `SecurityWatchdogOptions`).
 Wrapper behavior (preserved from v1 for backwards compatibility):
 
 - `isDeviceCompromised()` logs and rethrows native errors.
-- `isEmulator()`, `isDebuggerAttached()`, and `getDetectionReasons()` log and return safe fallback values (`false`, `false`, `[]`).
+- `isEmulator()`, `isDebuggerAttached()`, `getDetectionReasons()`, and `getInstallOrigin()` log and return safe fallback values (`false`, `false`, `[]`, `'unknown'`).
 - `checkDetailed()` and `configure()` propagate directly (no swallow).
 - Watchdog `start`/`stop` wrappers keep the historical synchronous signature by firing the async native methods without awaiting; rejections are logged, not rethrown.
 
@@ -366,7 +370,7 @@ cd example/android
   -PreactNativeArchitectures=arm64-v8a
 ```
 
-Expected: `BUILD SUCCESSFUL`. The CMake/NDK pass of `:psync_anti-jailbreak` compiles `cpp/**` (12 sources: HybridRootJailDetect, HybridSecurityWatchdog, HybridUrlSchemeProbe, HybridPackageManagerProbe, cpp-adapter, DeviceRiskAssessment, SignalCatalog, ProcParsers, AndroidProbes, AndroidChecks, IOSChecks, TcpProbe) plus the generated autolinking glue, then links into the example APK.
+Expected: `BUILD SUCCESSFUL`. The CMake/NDK pass of `:psync_anti-jailbreak` compiles `cpp/**` (14 sources: HybridRootJailDetect, HybridSecurityWatchdog, HybridUrlSchemeProbe, HybridPackageManagerProbe, HybridAppStoreReceiptProbe, cpp-adapter, DeviceRiskAssessment, SignalCatalog, ProcParsers, AndroidProbes, AndroidChecks, IOSChecks, TcpProbe, InstallOriginResolver) plus the generated autolinking glue, then links into the example APK.
 
 ### Why these are not the `bun run turbo` versions
 
@@ -419,7 +423,7 @@ cpp-adapter fallback; v0.9.2 PackageManagerProbe context fix; `206feb8`
 `consumer-rules.pro` bundled into the AAR.
 
 Note: `cpp/cpp-adapter.cpp` wraps the generated `registerAllNatives()` in a
-try/catch and re-registers the three pure-C++ HybridObjects individually on
+try/catch and re-registers the four pure-C++ HybridObjects individually on
 failure. This exists because the Kotlin `PackageManagerProbe` registration
 path touches JVM classes at `JNI_OnLoad` time; if that fails in a consumer
 app (R8 renames, missing Kotlin classes), the library degrades to the no-op

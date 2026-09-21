@@ -12,6 +12,14 @@
 #include <exception>
 #include <stdexcept>
 
+#if defined(__APPLE__)
+// `fprintf(stderr, ...)` from a background `std::thread` is not captured by
+// `xcrun simctl spawn booted log show` (that command reflects os_log, not the
+// process stderr pipe). Mirror the same markers through `os_log` so the
+// iOS watchdog can be observed from `log show` and from the Console.app.
+#include <os/log.h>
+#endif
+
 namespace margelo::nitro::rootjaildetect {
 
   HybridSecurityWatchdog::HybridSecurityWatchdog()
@@ -141,6 +149,9 @@ namespace margelo::nitro::rootjaildetect {
         switch (_protectionMode) {
           case ProtectionMode::LOG_ONLY:
             std::fprintf(stderr, "SecurityWatchdog detected a compromised device.\n");
+#if defined(__APPLE__)
+            os_log(OS_LOG_DEFAULT, "SecurityWatchdog detected a compromised device.");
+#endif
             break;
           case ProtectionMode::THROW_EXCEPTION:
             // A background thread cannot synchronously throw into the JS
@@ -150,6 +161,9 @@ namespace margelo::nitro::rootjaildetect {
             // should poll `checkDetailed()` on the JS thread and throw there.
             // We do NOT silently turn THROW_EXCEPTION into TERMINATE.
             std::fprintf(stderr, "SecurityWatchdog would throw for a compromised device.\n");
+#if defined(__APPLE__)
+            os_log(OS_LOG_DEFAULT, "SecurityWatchdog would throw for a compromised device (THROW_EXCEPTION demoted to log).");
+#endif
             break;
           case ProtectionMode::TERMINATE:
             std::terminate();

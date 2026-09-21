@@ -17,6 +17,7 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -52,6 +53,7 @@ namespace margelo::nitro::rootjaildetect {
       virtual std::vector<std::string> getInstalledRootPackages() = 0;
       virtual std::vector<std::string> getInstalledHidingPackages() = 0;
       virtual std::vector<std::string> getInstalledRiskyPackages() = 0;
+      virtual std::optional<std::string> getInstallerPackageName() = 0;
 
     protected:
       // Hybrid Setup

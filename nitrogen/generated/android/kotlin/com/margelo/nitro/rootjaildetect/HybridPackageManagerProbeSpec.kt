@@ -39,6 +39,10 @@ abstract class HybridPackageManagerProbeSpec: HybridObject() {
   @DoNotStrip
   @Keep
   abstract fun getInstalledRiskyPackages(): Array<String>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun getInstallerPackageName(): String?
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

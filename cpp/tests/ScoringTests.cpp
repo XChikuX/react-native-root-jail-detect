@@ -234,9 +234,9 @@ void runScoringTests() {
     assert(result.contributing.size() == 1);
   }
 
-  // ---- Mount hypothesis signals are never a sole compromise basis (WS-B) --
+  // ---- Hypothesis signals are never a sole compromise basis (WS-B) --------
   // Policy: hypothesis signals ship at weight 5-10 with reliability < 0.8,
-  // and neither mount signal alone may reach the default minScore (40.0,
+  // and no individual heuristic may reach the default minScore (40.0,
   // ResolvedRootJailDetectOptions). Weights may only rise after the
   // on-device measurement program records zero clean-corpus FPs and a
   // reproducible TP fixture (see CLAUDE.md detection policy).
@@ -253,9 +253,16 @@ void runScoringTests() {
     assert(overlayFs->severity == Severity::MEDIUM);
     assert(overlayFs->reliability == 0.55 && overlayFs->reliability < 0.8);
 
+    const auto installOrigin = lookupSignal(SignalId::ANDROID_INSTALL_ORIGIN_OTHER);
+    assert(installOrigin.has_value());
+    assert(installOrigin->score == 10.0);
+    assert(installOrigin->severity == Severity::LOW);
+    assert(installOrigin->reliability == 0.35 && installOrigin->reliability < 0.8);
+
     constexpr double kDefaultMinScore = 40.0;
     assert(denyList->score < kDefaultMinScore);
     assert(overlayFs->score < kDefaultMinScore);
+    assert(installOrigin->score < kDefaultMinScore);
     assert(denyList->score + overlayFs->score < kDefaultMinScore);
 
     // End-to-end through the aggregator with catalog-faithful weights: both

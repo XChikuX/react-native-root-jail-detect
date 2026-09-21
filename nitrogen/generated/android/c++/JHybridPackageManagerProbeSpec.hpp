@@ -57,6 +57,7 @@ namespace margelo::nitro::rootjaildetect {
     std::vector<std::string> getInstalledRootPackages() override;
     std::vector<std::string> getInstalledHidingPackages() override;
     std::vector<std::string> getInstalledRiskyPackages() override;
+    std::optional<std::string> getInstallerPackageName() override;
 
   private:
     jni::global_ref<JHybridPackageManagerProbeSpec::JavaPart> _javaPart;

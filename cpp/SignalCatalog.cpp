@@ -54,6 +54,13 @@ namespace margelo::nitro::rootjaildetect {
     if (id == SignalId::ANDROID_ADB_ROOT) return makeSpec(SignalId::ANDROID_ADB_ROOT, Severity::LOW, SignalCategory::PROPERTY, 5.0, 0.35);
     if (id == SignalId::ANDROID_RO_SECURE_ZERO) return makeSpec(SignalId::ANDROID_RO_SECURE_ZERO, Severity::LOW, SignalCategory::PROPERTY, 5.0, 0.35);
     if (id == SignalId::ANDROID_MOUNT_OVERLAY) return makeSpec(SignalId::ANDROID_MOUNT_OVERLAY, Severity::LOW, SignalCategory::MOUNT, 10.0, 0.40);
+    // Hypothesis weight until clean-device corpus and reproducible sideload
+    // fixtures establish the check's false-positive profile. Installer data is
+    // mutable on compromised devices and legacy Android has alternate Google
+    // installer identities, so this cannot independently set compromised.
+    if (id == SignalId::ANDROID_INSTALL_ORIGIN_OTHER) return makeSpec(
+      SignalId::ANDROID_INSTALL_ORIGIN_OTHER, Severity::LOW, SignalCategory::PACKAGE, 10.0, 0.35
+    );
     if (id == SignalId::ANDROID_CMDLINE_INSTRUMENTATION) return makeSpec(SignalId::ANDROID_CMDLINE_INSTRUMENTATION, Severity::HIGH, SignalCategory::PROCESS, 30.0, 0.75);
     if (id == SignalId::ANDROID_SOCKET_INSTRUMENTATION) return makeSpec(SignalId::ANDROID_SOCKET_INSTRUMENTATION, Severity::HIGH, SignalCategory::PROCESS, 30.0, 0.75);
     if (id == SignalId::ANDROID_NETWORK_FRIDA) return makeSpec(SignalId::ANDROID_NETWORK_FRIDA, Severity::HIGH, SignalCategory::INJECTION, 30.0, 0.80);

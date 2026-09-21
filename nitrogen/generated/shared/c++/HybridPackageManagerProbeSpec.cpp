@@ -17,6 +17,7 @@ namespace margelo::nitro::rootjaildetect {
       prototype.registerHybridMethod("getInstalledRootPackages", &HybridPackageManagerProbeSpec::getInstalledRootPackages);
       prototype.registerHybridMethod("getInstalledHidingPackages", &HybridPackageManagerProbeSpec::getInstalledHidingPackages);
       prototype.registerHybridMethod("getInstalledRiskyPackages", &HybridPackageManagerProbeSpec::getInstalledRiskyPackages);
+      prototype.registerHybridMethod("getInstallerPackageName", &HybridPackageManagerProbeSpec::getInstallerPackageName);
     });
   }
 

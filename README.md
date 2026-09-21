@@ -7,6 +7,8 @@ A **React Native Nitro Module** (New Architecture only) for detecting rooted (An
 
 > **Security Note:** Client-side detection is a defense-in-depth heuristic, not a guarantee. Determined attackers can hook or bypass checks. Never use client booleans as sole authorization for sensitive actions—pair with backend Play Integrity / App Attest verification.
 
+> **Store-origin note:** On Android, the library flags an explicit installer of record other than Google Play (`com.android.vending`, plus the legacy `com.google.android.feedback` identity reported by pre-Android-11 Play installs). An absent installer record (common for ADB and system installs, or after the installer app was uninstalled) is unknown and does not trigger a finding. This is an unmeasured hypothesis signal that cannot mark a device compromised on its own; it is a local heuristic, not proof of app authenticity. iOS has no equivalent public installer API.
+
 ---
 
 ## Installation
@@ -461,6 +463,7 @@ Leave `includeEvidence` disabled (the default) in production. The redacted hints
 | low | `android.build.adb_root` | 5 | `service.adb.root` set (dev build or Shamiko) |
 | low | `android.build.ro_secure_zero` | 5 | `ro.secure` is `0` (dev build or Shamiko) |
 | low | `android.mount.overlay` | 10 | Hidden mount overlay in app namespace |
+| low | `android.install.origin.other` | 10 | Explicit non-Google-Play installer; hypothesis signal |
 | high | `android.sandbox.write` | 30 | Sandbox write to `/data/local/tmp` succeeded (weak corroboration) |
 | high | `android.package_manager.root` | 25 | Known root-management package installed (Magisk, SuperSU, KingRoot, etc.) |
 | medium | `android.package_manager.hma` | 15 | Hiding or hooking-related package visible to PackageManager |

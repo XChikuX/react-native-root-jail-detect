@@ -12,8 +12,9 @@
 #include "HybridPackageManagerProbeSpec.hpp"
 
 #include <cstddef>
-#include <vector>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -25,6 +26,7 @@ class HybridPackageManagerProbe final : public HybridPackageManagerProbeSpec {
   std::vector<std::string> getInstalledRootPackages() override;
   std::vector<std::string> getInstalledHidingPackages() override;
   std::vector<std::string> getInstalledRiskyPackages() override;
+  std::optional<std::string> getInstallerPackageName() override;
 
  public:
   size_t getExternalMemorySize() noexcept override;

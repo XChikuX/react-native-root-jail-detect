@@ -1,6 +1,7 @@
 package com.margelo.nitro.rootjaildetect
 
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.NitroModules
@@ -25,6 +26,21 @@ class HybridPackageManagerProbe : HybridPackageManagerProbeSpec() {
 
   override fun getInstalledRiskyPackages(): Array<String> {
     return queryPackages(riskyApps)
+  }
+
+  override fun getInstallerPackageName(): String? {
+    val context = NitroModules.applicationContext
+      ?: throw IllegalStateException("Android application context is unavailable")
+    val packageManager = context.packageManager
+
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      packageManager
+        .getInstallSourceInfo(context.packageName)
+        .installingPackageName
+    } else {
+      @Suppress("DEPRECATION")
+      packageManager.getInstallerPackageName(context.packageName)
+    }
   }
 
   private val knownRootPackages = mapOf(

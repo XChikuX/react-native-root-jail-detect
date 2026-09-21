@@ -19,4 +19,11 @@ export interface PackageManagerProbe extends HybridObject<{ ios: 'c++'; android:
 
   /** Check for applications associated with risky patching or piracy tools. */
   getInstalledRiskyPackages(): string[];
+
+  /**
+   * Returns the installer package recorded for this app, when Android provides
+   * one. A missing value is unknown (for example, ADB or system installs), not
+   * proof of sideloading.
+   */
+  getInstallerPackageName(): string | undefined;
 }

@@ -27,6 +27,11 @@ std::vector<std::string> HybridPackageManagerProbe::getInstalledRiskyPackages() 
   return {};
 }
 
+std::optional<std::string> HybridPackageManagerProbe::getInstallerPackageName() {
+  // iOS and host builds have no public installer-origin API.
+  return std::nullopt;
+}
+
 size_t HybridPackageManagerProbe::getExternalMemorySize() noexcept {
   return sizeof(*this);
 }

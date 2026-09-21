@@ -95,6 +95,7 @@ const signalReasons: Record<string, string> = {
   'android.cmdline.instrumentation': 'Runtime instrumentation was found in the process command line.',
   'android.debugger.tracerpid': 'Process status indicates a debugger is attached (TracerPid).',
   'android.emulator': 'Multiple Android build properties indicate an emulator.',
+  'android.install.origin.other': 'The app installer of record is not Google Play.',
   'android.maps.frida': 'A Frida artifact is mapped into the process.',
   'android.maps.lsposed': 'An LSPosed or Xposed artifact is mapped into the process.',
   'android.maps.riru': 'A Riru framework artifact is mapped into the process.',

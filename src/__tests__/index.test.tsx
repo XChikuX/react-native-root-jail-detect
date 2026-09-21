@@ -383,6 +383,7 @@ describe('@psync/anti-jailbreak wrappers', () => {
           signals: [
             stubSignal('android.maps.anon_injection'),
             stubSignal('android.package_manager.hma'),
+            stubSignal('android.install.origin.other'),
             stubSignal('android.modules.magisk'),
             stubSignal('android.addon_d.magisk'),
           ],
@@ -391,6 +392,7 @@ describe('@psync/anti-jailbreak wrappers', () => {
       await expect(getDetectionReasons()).resolves.toEqual([
         'A cluster of executable anonymous memory mappings was found.',
         'A hiding or hooking-related package was detected via PackageManager.',
+        'The app installer of record is not Google Play.',
         'A readable Magisk module tree contains module metadata.',
         'A Magisk persistence script was found under addon.d.',
       ]);

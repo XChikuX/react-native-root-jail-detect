@@ -76,6 +76,10 @@ namespace margelo::nitro::rootjaildetect {
     inline constexpr std::string_view ANDROID_RO_SECURE_ZERO = "android.build.ro_secure_zero";
     /// Hidden overlay/bind-mount content surfaced through namespace comparison.
     inline constexpr std::string_view ANDROID_MOUNT_OVERLAY = "android.mount.overlay";
+    /// The Android installer of record is explicitly not Google Play. This is
+    /// an unmeasured local store-origin heuristic, not cryptographic
+    /// attestation, and must not independently mark a device compromised.
+    inline constexpr std::string_view ANDROID_INSTALL_ORIGIN_OTHER = "android.install.origin.other";
 
     // ---- Android: high severity (runtime instrumentation) ----
     /// Frida or other instrumentation artifact in the process command line.

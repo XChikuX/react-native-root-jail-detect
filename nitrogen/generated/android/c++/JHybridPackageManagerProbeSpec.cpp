@@ -11,6 +11,7 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -86,6 +87,11 @@ namespace margelo::nitro::rootjaildetect {
       }
       return __vector;
     }(__result);
+  }
+  std::optional<std::string> JHybridPackageManagerProbeSpec::getInstallerPackageName() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getInstallerPackageName");
+    auto __result = method(_javaPart);
+    return __result != nullptr ? std::make_optional(__result->toStdString()) : std::nullopt;
   }
 
 } // namespace margelo::nitro::rootjaildetect

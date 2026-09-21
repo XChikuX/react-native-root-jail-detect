@@ -88,6 +88,13 @@ namespace margelo::nitro::rootjaildetect {
       return std::chrono::steady_clock::now() >= deadline;
     }
 
+    bool isGooglePlayInstaller(std::string_view installer) noexcept {
+      // `com.google.android.feedback` is a legacy installer identity emitted
+      // for some Play-managed installs on Android versions before API 30.
+      return installer == "com.android.vending" ||
+             installer == "com.google.android.feedback";
+    }
+
     // Append findings as signals. `available=false` is not used here because
     // each detector only emits a finding when it actually matched something.
     void appendFindings(std::vector<DetectionSignal>& signals,
@@ -313,6 +320,18 @@ namespace margelo::nitro::rootjaildetect {
             result.signals.push_back(buildSignal(
               SignalId::ANDROID_PACKAGE_MANAGER_RISKY,
               "risky-package:" + riskyPackages.front(),
+              includeEvidence
+            ));
+          }
+
+          const std::optional<std::string> installer = probe->getInstallerPackageName();
+          // A missing installer record is normal for system/ADB installs and
+          // can also occur after the installer app was uninstalled. Only a
+          // known non-Google installer is a store-origin finding.
+          if (installer.has_value() && !isGooglePlayInstaller(installer.value())) {
+            result.signals.push_back(buildSignal(
+              SignalId::ANDROID_INSTALL_ORIGIN_OTHER,
+              "installer-not-google-play:" + installer.value(),
               includeEvidence
             ));
           }

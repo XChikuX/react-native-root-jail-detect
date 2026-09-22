@@ -27,6 +27,10 @@
 
 namespace margelo::nitro::rootjaildetect {
 
+  // Helpers are only referenced from the __APPLE__ body below; guard them so
+  // the Android build (which compiles this file to keep the CMake source list
+  // identical across platforms) does not emit -Wunused-function warnings.
+#if defined(__APPLE__)
   namespace {
 
     // Build a `DetectionSignal` from a signal id by looking up the catalog
@@ -83,6 +87,7 @@ namespace margelo::nitro::rootjaildetect {
     }
 
   } // namespace
+#endif
 
   IOSCheckResult runIOSChecks(bool includeEvidence,
                               std::chrono::steady_clock::time_point deadline) noexcept {

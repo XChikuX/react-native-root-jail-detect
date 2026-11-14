@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #elif defined(__APPLE__)
@@ -24,6 +25,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
@@ -118,26 +120,44 @@ namespace margelo::nitro::rootjaildetect {
       if (connectResult == 0) {
         return true;
       }
-      if (errno != EINPROGRESS) {
+      // A non-blocking connect interrupted by a signal keeps connecting in the
+      // background (POSIX), so EINTR is handled like EINPROGRESS.
+      if (errno != EINPROGRESS && errno != EINTR) {
         return false;
       }
 
       // Wait for the socket to become writable (success) or an error.
-      fd_set writeSet;
-      FD_ZERO(&writeSet);
-      FD_SET(socket.get(), &writeSet);
-
-      struct timeval tv {};
-      long ms = timeoutMs.count();
+      // `poll(2)`, not `select(2)`: `FD_SET` on a descriptor >= FD_SETSIZE
+      // (1024) is undefined behavior and aborts under bionic's FORTIFY, which
+      // would crash host apps that hold many open descriptors.
+      long long ms = timeoutMs.count();
       if (ms > 1000) {
         ms = 1000; // Cap per-port timeout at 1s even if more budget remains.
       }
-      tv.tv_sec = ms / 1000;
-      tv.tv_usec = (ms % 1000) * 1000;
+      const auto pollDeadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
 
-      int selectResult = ::select(socket.get() + 1, nullptr, &writeSet, nullptr, &tv);
-      if (selectResult <= 0) {
-        return false;
+      for (;;) {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+          pollDeadline - std::chrono::steady_clock::now()
+        ).count();
+        if (remaining <= 0) {
+          return false;
+        }
+        struct pollfd descriptor {};
+        descriptor.fd = socket.get();
+        descriptor.events = POLLOUT;
+        const int pollResult = ::poll(&descriptor, 1, static_cast<int>(remaining));
+        if (pollResult > 0) {
+          break;
+        }
+        if (pollResult == 0) {
+          return false; // timed out
+        }
+        if (errno != EINTR) {
+          return false;
+        }
+        // Interrupted by a signal: retry with the remaining budget.
       }
 
       int socketError = 0;

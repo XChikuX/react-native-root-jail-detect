@@ -190,4 +190,39 @@ namespace margelo::nitro::rootjaildetect {
     return verdict;
   }
 
+  /// Match a loaded image with the app's own identity taken out of the
+  /// picture. `mainExecutablePath` is the path of the app's main executable
+  /// (`<container>/<Name>.app/<Name>`).
+  ///
+  /// Every image the app ships is loaded from inside its own bundle
+  /// directory, so the bundle name is part of each of those paths. Without
+  /// this, an app whose name contains a token (for example `FridaKahlo.app`
+  /// or `Substitute Teacher.app`) would report a hook image on every clean
+  /// device. Rules:
+  ///   - The main executable itself is never an injected image.
+  ///   - For images inside the app bundle, only the path *below* the bundle
+  ///     directory is matched, so an embedded `Frameworks/FridaGadget.dylib`
+  ///     in a repackaged app is still caught.
+  ///   - Images outside the bundle are matched on their full path, unchanged.
+  inline IOSImageVerdict matchLoadedImage(std::string_view imagePath,
+                                          std::string_view mainExecutablePath) noexcept {
+    if (mainExecutablePath.empty()) {
+      return matchLoadedImage(imagePath);
+    }
+    if (imagePath == mainExecutablePath) {
+      return IOSImageVerdict{};
+    }
+    const size_t lastSlash = mainExecutablePath.rfind('/');
+    if (lastSlash == std::string_view::npos || lastSlash == 0) {
+      return matchLoadedImage(imagePath);
+    }
+    // Bundle directory including the trailing slash.
+    const std::string_view bundleDir = mainExecutablePath.substr(0, lastSlash + 1);
+    if (imagePath.size() > bundleDir.size() &&
+        imagePath.substr(0, bundleDir.size()) == bundleDir) {
+      return matchLoadedImage(imagePath.substr(bundleDir.size()));
+    }
+    return matchLoadedImage(imagePath);
+  }
+
 } // namespace margelo::nitro::rootjaildetect

@@ -260,7 +260,7 @@ import {
 } from '@psync/anti-jailbreak';
 
 const options: LegacySecurityWatchdogOptions = {
-  intervalMs: 5000, // milliseconds between ticks (legacy alias: `interval`)
+  intervalMs: 5000, // milliseconds between ticks (legacy alias: `interval`); clamped to 100 ms – 24 h
   protectionMode: 'LOG_ONLY', // 'LOG_ONLY' | 'THROW_EXCEPTION' | 'TERMINATE'
 };
 
@@ -408,7 +408,7 @@ type SignalCategory =
 ```ts
 interface RootJailDetectOptions {
   minScore?: number;                 // default 40 — `compromised` becomes true at or above this
-  timeoutMs?: number;                // default 600 — total wall-clock budget per pass
+  timeoutMs?: number;                // default 600 — total wall-clock budget per pass (capped at 1 hour)
   includeEvidence?: boolean;         // default false — see "Evidence redaction" below
   treatDebuggerAsCompromise?: boolean; // default false
   enablePlayIntegrity?: boolean;     // default false — server-attested; not yet wired

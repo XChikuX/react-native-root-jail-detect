@@ -16,7 +16,9 @@ namespace margelo::nitro::rootjaildetect {
   }
 
   InstallOrigin resolveAndroidInstallOrigin(const std::optional<std::string>& installerPackage) noexcept {
-    if (!installerPackage.has_value()) {
+    // An empty string is the same "no record" state as a missing value (some
+    // OEM PackageManager builds return "" instead of null).
+    if (!installerPackage.has_value() || installerPackage.value().empty()) {
       // A missing installer record is normal for system/ADB installs and can
       // also occur after the installer app was uninstalled. Unknown is the
       // honest answer — not "other".

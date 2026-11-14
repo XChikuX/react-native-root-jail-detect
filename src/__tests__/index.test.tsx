@@ -192,6 +192,36 @@ describe('@psync/anti-jailbreak wrappers', () => {
     });
   });
 
+  describe('non-detected signals', () => {
+    it('isEmulator() ignores an emulator signal marked unavailable', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [
+            stubSignal('android.emulator', {
+              detected: false,
+              unavailable: true,
+            }),
+          ],
+        })
+      );
+      await expect(isEmulator()).resolves.toBe(false);
+    });
+
+    it('getDetectionReasons() skips signals with detected: false', async () => {
+      mockCheckDetailed.mockResolvedValue(
+        stubResult({
+          signals: [
+            stubSignal('android.su.binary', { detected: false }),
+            stubSignal('android.build.test_keys'),
+          ],
+        })
+      );
+      await expect(getDetectionReasons()).resolves.toEqual([
+        'The Android build uses test keys.',
+      ]);
+    });
+  });
+
   describe('isDebuggerAttached()', () => {
     it('resolves to result.debuggerDetected', async () => {
       mockCheckDetailed.mockResolvedValue(
@@ -578,6 +608,24 @@ describe('@psync/anti-jailbreak wrappers', () => {
       expect(consoleSpy).toHaveBeenCalledWith('Detection callback threw:', boom);
     });
 
+    it('logs a rejection from an async callback instead of leaking it', async () => {
+      const consoleSpy = jest.spyOn(console, 'error');
+      const boom = new Error('async telemetry boom');
+      mockCheckDetailed.mockResolvedValue(stubResult({ score: 5 }));
+      setDetectionCallback(async () => {
+        throw boom;
+      });
+
+      await expect(checkDetailed()).resolves.toEqual(
+        expect.objectContaining({ score: 5 })
+      );
+      await new Promise<void>((resolve) => setTimeout(() => resolve(), 0));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Detection callback rejected:',
+        boom
+      );
+    });
+
     it('is exposed as a named export and on the default object', () => {
       const defaultExport = require('../index').default;
       expect(typeof setDetectionCallback).toBe('function');
@@ -662,6 +710,34 @@ describe('@psync/anti-jailbreak wrappers', () => {
       mockWatchdogStop.mockResolvedValue(undefined);
       stopSecurityWatchdog();
       expect(mockWatchdogStop).toHaveBeenCalled();
+    });
+
+    it('logs instead of throwing when the native start call throws synchronously', () => {
+      const consoleSpy = jest.spyOn(console, 'error');
+      const err = new Error('watchdog handle unavailable');
+      mockWatchdogStart.mockImplementationOnce(() => {
+        throw err;
+      });
+
+      expect(() => startSecurityWatchdog()).not.toThrow();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Failed to start security watchdog:',
+        err
+      );
+    });
+
+    it('logs instead of throwing when the native stop call throws synchronously', () => {
+      const consoleSpy = jest.spyOn(console, 'error');
+      const err = new Error('watchdog handle unavailable');
+      mockWatchdogStop.mockImplementationOnce(() => {
+        throw err;
+      });
+
+      expect(() => stopSecurityWatchdog()).not.toThrow();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Failed to stop security watchdog:',
+        err
+      );
     });
 
     it('logs console error when startSecurityWatchdog native promise rejects', async () => {

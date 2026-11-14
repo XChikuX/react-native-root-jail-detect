@@ -397,6 +397,17 @@ namespace margelo::nitro::rootjaildetect {
       if (deadlineExceeded && contents.empty()) {
         return std::nullopt;
       }
+      // A read cut short by the size cap or the deadline usually ends in the
+      // middle of a line. Drop that fragment: a `/proc/self/maps` line cut
+      // before its pathname would parse as an unnamed (anonymous) mapping, and
+      // a cut mount line would misparse its fields. Content without any
+      // newline (`cmdline`, `enforce`) is returned as-is.
+      if (deadlineExceeded || contents.size() >= maxBytes) {
+        const size_t lastNewline = contents.rfind('\n');
+        if (lastNewline != std::string::npos) {
+          contents.resize(lastNewline + 1);
+        }
+      }
       return contents;
     } catch (...) {
       // Any I/O failure is treated as "no data". A missing/unreadable `/proc`
@@ -410,6 +421,60 @@ namespace margelo::nitro::rootjaildetect {
     // callers that do not yet pass a deadline.
     return readFileIfExists(path, std::chrono::steady_clock::time_point::max(),
                             static_cast<size_t>(512 * 1024));
+  }
+
+  std::string_view ownPackageFromCmdline(std::string_view cmdlineContent) noexcept {
+    // `/proc/self/cmdline` is NUL-separated; for an app process argv[0] is
+    // `<package>` or `<package>:<process-suffix>`.
+    std::string_view name = cmdlineContent.substr(0, cmdlineContent.find('\0'));
+    name = name.substr(0, name.find(':'));
+    // Android package names always have at least two dot-separated segments.
+    // Anything else (zygote names, empty, wrapped launchers) is not treated as
+    // a package so redaction can never blank out unrelated text.
+    if (name.size() < 3 || name.find('.') == std::string_view::npos ||
+        name.find('/') != std::string_view::npos) {
+      return {};
+    }
+    return name;
+  }
+
+  std::string_view redactOwnPackage(std::string_view content, std::string_view packageName,
+                                    std::string& storage) noexcept {
+    if (packageName.empty() || content.find(packageName) == std::string_view::npos) {
+      return content;
+    }
+    // Only pay for the copy when the package name itself would trip a scanner.
+    bool needsRedaction = containsCI(packageName, "frida") || containsCI(packageName, "overlay");
+    for (const PatternEntry& entry : K_HOOK_PATTERNS) {
+      needsRedaction = needsRedaction || containsCI(packageName, entry.token);
+    }
+    for (const PatternEntry& entry : K_MOUNT_PATTERNS) {
+      needsRedaction = needsRedaction || containsCI(packageName, entry.token);
+    }
+    if (!needsRedaction) {
+      return content;
+    }
+    try {
+      storage.clear();
+      storage.reserve(content.size());
+      size_t pos = 0;
+      while (pos < content.size()) {
+        const size_t found = content.find(packageName, pos);
+        if (found == std::string_view::npos) {
+          storage.append(content.substr(pos));
+          break;
+        }
+        storage.append(content.substr(pos, found - pos));
+        // Single neutral character keeps field boundaries intact for the
+        // whitespace-delimited maps/mountinfo parsers.
+        storage.push_back('~');
+        pos = found + packageName.size();
+      }
+      return storage;
+    } catch (...) {
+      // Allocation failure: fall back to the unredacted content.
+      return content;
+    }
   }
 
   std::vector<ProcFinding> scanMapsForHooks(std::string_view mapsContent) noexcept {
@@ -833,8 +898,14 @@ namespace margelo::nitro::rootjaildetect {
 
   std::optional<int> parseTracerPid(std::string_view statusContent) noexcept {
     // Locate the `TracerPid:` line and parse the integer that follows.
+    // The label must start a line: `Name:` precedes it in `/proc/self/status`
+    // and holds a process-chosen thread name, which must not be parsed as the
+    // tracer field.
     constexpr std::string_view kPrefix = "TracerPid:";
     size_t pos = statusContent.find(kPrefix);
+    while (pos != std::string_view::npos && pos != 0 && statusContent[pos - 1] != '\n') {
+      pos = statusContent.find(kPrefix, pos + 1);
+    }
     if (pos == std::string_view::npos) {
       return std::nullopt;
     }

@@ -68,10 +68,22 @@ export function setDetectionCallback(cb: DetectionEventCallback | undefined): vo
 function maybeEmitDetectionEvent(assessment: CompromiseAssessment): void {
   if (_detectionCallback) {
     try {
-      _detectionCallback(assessment, {
+      // The callback is typed `void`, but an `async` function is assignable
+      // to it. Catch its rejection too, so a failing telemetry handler never
+      // becomes an unhandled promise rejection in the host app.
+      const returned: unknown = _detectionCallback(assessment, {
         platform: Platform.OS,
         timestampMs: Date.now(),
       });
+      if (
+        returned !== null &&
+        typeof returned === 'object' &&
+        typeof (returned as PromiseLike<unknown>).then === 'function'
+      ) {
+        (returned as PromiseLike<unknown>).then(undefined, (e: unknown) => {
+          console.error('Detection callback rejected:', e);
+        });
+      }
     } catch (e) {
       console.error('Detection callback threw:', e);
     }
@@ -264,8 +276,11 @@ export async function isEmulator(): Promise<boolean> {
     return Boolean(
       result.signals.some(
         (signal) =>
-          signal.id.startsWith(`${Platform.OS}.emulator`) ||
-          signal.id.startsWith(`${Platform.OS}.simulator`)
+          // A check that could not run is not evidence of an emulator.
+          signal.unavailable !== true &&
+          signal.detected !== false &&
+          (signal.id.startsWith(`${Platform.OS}.emulator`) ||
+            signal.id.startsWith(`${Platform.OS}.simulator`))
       )
     );
   } catch (error) {
@@ -334,9 +349,9 @@ export async function getDetectionReasons(): Promise<string[]> {
     const result = await getRoot().checkDetailed();
     const reasons = new Set<string>();
     for (const signal of result.signals) {
-      if (signal.unavailable === true) {
-        // Unavailable checks produced no evidence and must not appear as a
-        // detection reason.
+      if (signal.unavailable === true || signal.detected === false) {
+        // Unavailable or non-detected checks produced no evidence and must
+        // not appear as a detection reason.
         continue;
       }
       reasons.add(signal.evidence ?? signalReasons[signal.id] ?? urlSchemeReason(signal.id));
@@ -387,11 +402,17 @@ export function startSecurityWatchdog(
     protectionMode,
   };
   // Fire-and-forget to preserve the historical synchronous signature. Errors
-  // are logged but not rethrown, matching the previous bridge behavior.
-  fireAsync(
-    getRoot().getWatchdog().start(nativeOptions),
-    'start security watchdog'
-  );
+  // are logged but not rethrown, matching the previous bridge behavior. The
+  // try/catch covers failures that happen before a Promise exists (native
+  // module missing, handle creation throwing) so they follow the same rule.
+  try {
+    fireAsync(
+      getRoot().getWatchdog().start(nativeOptions),
+      'start security watchdog'
+    );
+  } catch (error) {
+    console.error('Failed to start security watchdog:', error);
+  }
 }
 
 /**
@@ -401,5 +422,9 @@ export function startSecurityWatchdog(
  * `stop()` without awaiting it.
  */
 export function stopSecurityWatchdog(): void {
-  fireAsync(getRoot().getWatchdog().stop(), 'stop security watchdog');
+  try {
+    fireAsync(getRoot().getWatchdog().stop(), 'stop security watchdog');
+  } catch (error) {
+    console.error('Failed to stop security watchdog:', error);
+  }
 }

@@ -82,4 +82,7 @@ void runInstallOriginResolverTests() {
   // (Documented invariant: the comparison is exact, not substring-based.)
   expect(resolveAndroidInstallOrigin(std::optional<std::string>("com.android.vending.evil.twin")),
          InstallOrigin::OTHER, "android:spoofed-substring");
+  // An empty installer string is "no record", never a claimed origin.
+  expect(resolveAndroidInstallOrigin(std::optional<std::string>("")),
+         InstallOrigin::UNKNOWN, "android:empty-installer");
 }

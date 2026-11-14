@@ -110,13 +110,29 @@ namespace margelo::nitro::rootjaildetect {
                                       std::chrono::steady_clock::time_point deadline) noexcept {
     AndroidCheckResult result;
 
+    // The app's own package name appears in its own maps, mounts, command line,
+    // and sockets. It is neutralized before token scanning so an app whose
+    // package contains a detection token does not flag itself (see
+    // `redactOwnPackage`). Unreadable cmdline simply means no redaction.
+    std::optional<std::string> cmdline;
+    if (!expired(deadline)) {
+      cmdline = readFileIfExists(K_PROC_CMDLINE, deadline, 4 * 1024);
+    }
+    const std::string ownPackage(ownPackageFromCmdline(cmdline.value_or("")));
+
     // ---- Memory maps: Zygisk / LSPosed / Frida / Riru ----------------------
+    // The cap is sized for real apps: a React Native process routinely has a
+    // maps file of several hundred KB to over 1 MB, sorted by address, so a
+    // small cap silently skipped every library mapped past the cutoff. The
+    // read stays bounded by the pass deadline.
     if (expired(deadline)) {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MAPS));
       result.partial = true;
-    } else if (auto maps = readFileIfExists(K_PROC_MAPS, deadline, 256 * 1024)) {
-      appendFindings(result.signals, scanMapsForHooks(*maps), includeEvidence);
-      appendFindings(result.signals, scanMapsForAnonymousInjection(*maps), includeEvidence);
+    } else if (auto maps = readFileIfExists(K_PROC_MAPS, deadline, 4 * 1024 * 1024)) {
+      std::string redacted;
+      const std::string_view scanned = redactOwnPackage(*maps, ownPackage, redacted);
+      appendFindings(result.signals, scanMapsForHooks(scanned), includeEvidence);
+      appendFindings(result.signals, scanMapsForAnonymousInjection(scanned), includeEvidence);
     } else {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MAPS));
     }
@@ -126,8 +142,20 @@ namespace margelo::nitro::rootjaildetect {
       result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MOUNTS));
       result.partial = true;
     } else {
-      std::optional<std::string> mountinfo = readFileIfExists(K_PROC_MOUNTINFO, deadline, 128 * 1024);
-      std::optional<std::string> mounts = readFileIfExists(K_PROC_MOUNTS, deadline, 128 * 1024);
+      std::optional<std::string> mountinfo = readFileIfExists(K_PROC_MOUNTINFO, deadline, 512 * 1024);
+      std::optional<std::string> mounts = readFileIfExists(K_PROC_MOUNTS, deadline, 512 * 1024);
+      if (mountinfo.has_value()) {
+        std::string redacted;
+        if (redactOwnPackage(*mountinfo, ownPackage, redacted).data() != mountinfo->data()) {
+          mountinfo = std::move(redacted);
+        }
+      }
+      if (mounts.has_value()) {
+        std::string redacted;
+        if (redactOwnPackage(*mounts, ownPackage, redacted).data() != mounts->data()) {
+          mounts = std::move(redacted);
+        }
+      }
       if (!mountinfo.has_value() && !mounts.has_value()) {
         result.signals.push_back(unavailableSignal(SignalId::ANDROID_CHECK_MOUNTS));
       } else {
@@ -242,16 +270,21 @@ namespace margelo::nitro::rootjaildetect {
       result.partial = true;
     } else {
       bool available = false;
-      if (auto cmdline = readFileIfExists(K_PROC_CMDLINE, deadline, 4 * 1024)) {
+      if (!cmdline.has_value()) {
+        cmdline = readFileIfExists(K_PROC_CMDLINE, deadline, 4 * 1024);
+      }
+      if (cmdline.has_value()) {
         available = true;
-        if (cmdline->find("frida") != std::string::npos) {
+        std::string redacted;
+        if (redactOwnPackage(*cmdline, ownPackage, redacted).find("frida") != std::string_view::npos) {
           result.signals.push_back(buildSignal(
             SignalId::ANDROID_CMDLINE_INSTRUMENTATION, "frida-command-line", includeEvidence));
         }
       }
       if (auto unixSockets = readFileIfExists(K_PROC_NET_UNIX, deadline, 128 * 1024)) {
         available = true;
-        if (unixSockets->find("frida") != std::string::npos) {
+        std::string redacted;
+        if (redactOwnPackage(*unixSockets, ownPackage, redacted).find("frida") != std::string_view::npos) {
           result.signals.push_back(buildSignal(
             SignalId::ANDROID_SOCKET_INSTRUMENTATION, "frida-local-socket", includeEvidence));
         }
@@ -297,16 +330,23 @@ namespace margelo::nitro::rootjaildetect {
         if (!probe) {
           probe = std::make_shared<HybridPackageManagerProbe>();
         }
+        // Each query is isolated: a failure in one category (binder error,
+        // missing context) is "no data" for that category only and must not
+        // discard the categories that can still be answered.
         try {
           std::vector<std::string> rootPackages = probe->getInstalledRootPackages();
           if (!rootPackages.empty()) {
-            for (const auto& pkg : rootPackages) {
-              result.signals.push_back(
-                buildSignal(SignalId::ANDROID_PACKAGE_MANAGER_ROOT, "root-package:" + pkg, includeEvidence)
-              );
-              break;  // Only emit one signal for the first detected package
-            }
+            // Only emit one signal, for the first detected package.
+            result.signals.push_back(buildSignal(
+              SignalId::ANDROID_PACKAGE_MANAGER_ROOT,
+              "root-package:" + rootPackages.front(),
+              includeEvidence
+            ));
           }
+        } catch (...) {
+          // PackageManager probe failed; not a detection.
+        }
+        try {
           std::vector<std::string> hidingPackages = probe->getInstalledHidingPackages();
           if (!hidingPackages.empty()) {
             result.signals.push_back(buildSignal(
@@ -315,6 +355,10 @@ namespace margelo::nitro::rootjaildetect {
               includeEvidence
             ));
           }
+        } catch (...) {
+          // PackageManager probe failed; not a detection.
+        }
+        try {
           std::vector<std::string> riskyPackages = probe->getInstalledRiskyPackages();
           if (!riskyPackages.empty()) {
             result.signals.push_back(buildSignal(
@@ -323,12 +367,17 @@ namespace margelo::nitro::rootjaildetect {
               includeEvidence
             ));
           }
-
+        } catch (...) {
+          // PackageManager probe failed; not a detection.
+        }
+        try {
           const std::optional<std::string> installer = probe->getInstallerPackageName();
-          // A missing installer record is normal for system/ADB installs and
-          // can also occur after the installer app was uninstalled. Only a
-          // known non-Google installer is a store-origin finding.
-          if (installer.has_value() && !isGooglePlayInstaller(installer.value())) {
+          // A missing (or empty) installer record is normal for system/ADB
+          // installs and can also occur after the installer app was
+          // uninstalled. Only a known non-Google installer is a store-origin
+          // finding.
+          if (installer.has_value() && !installer.value().empty() &&
+              !isGooglePlayInstaller(installer.value())) {
             result.signals.push_back(buildSignal(
               SignalId::ANDROID_INSTALL_ORIGIN_OTHER,
               "installer-not-google-play:" + installer.value(),

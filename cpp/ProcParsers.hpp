@@ -72,6 +72,21 @@ namespace margelo::nitro::rootjaildetect {
     size_t maxBytes
   ) noexcept;
 
+  /// Extract the app's own package name from `/proc/self/cmdline` content
+  /// (argv[0] up to the first NUL, without any `:process` suffix). Returns an
+  /// empty view when the content does not look like a package name.
+  std::string_view ownPackageFromCmdline(std::string_view cmdlineContent) noexcept;
+
+  /// Neutralize the app's own package name inside `/proc` content before it is
+  /// token-scanned. Paths and mounts in the app's own namespace embed its
+  /// package name (`/data/app/.../<package>-.../base.apk`, `/data/data/<package>`),
+  /// so an app whose package happens to contain a detection token (for
+  /// example `com.fridakahlo.gallery` or `com.megapatch.game`) would
+  /// otherwise flag itself on every clean device. Returns `content` unchanged
+  /// when no redaction is needed; otherwise returns a view into `storage`.
+  std::string_view redactOwnPackage(std::string_view content, std::string_view packageName,
+                                    std::string& storage) noexcept;
+
   /// Scan `/proc/self/maps` content for known Zygisk, LSPosed, Frida, and Riru
   /// library/path artifacts. Returns one finding per distinct signal id that
   /// matched (callers deduplicate further by id during scoring).

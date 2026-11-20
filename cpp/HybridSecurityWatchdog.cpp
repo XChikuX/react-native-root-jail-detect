@@ -6,6 +6,7 @@
 
 #include <NitroModules/Promise.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -105,7 +106,14 @@ namespace margelo::nitro::rootjaildetect {
       if (_isRunning.load(std::memory_order_acquire)) {
         return;
       }
-      _intervalMs = intervalMs;
+      // Clamp before the value is ever used for a sleep. A sub-100 ms interval
+      // turns the watchdog into a busy loop of full detection passes (file
+      // reads, socket probes, JNI calls); an enormous one overflows the
+      // condition variable's integer tick conversion, which can make the wait
+      // return immediately and spin the same way.
+      constexpr double kMinIntervalMs = 100.0;
+      constexpr double kMaxIntervalMs = 24.0 * 60.0 * 60.0 * 1000.0;
+      _intervalMs = std::clamp(intervalMs, kMinIntervalMs, kMaxIntervalMs);
       _protectionMode = options.protectionMode.value_or(ProtectionMode::LOG_ONLY);
       _isRunning.store(true, std::memory_order_release);
       _thread = std::thread(&HybridSecurityWatchdog::run, this);
@@ -144,8 +152,24 @@ namespace margelo::nitro::rootjaildetect {
         options = _configuration->options;
       }
 
-      const CompromiseAssessment result = assessDevice(options);
-      if (result.compromised) {
+      // An exception escaping a `std::thread` entry point is `std::terminate`,
+      // which would kill the host app even in LOG_ONLY mode. A failed pass is
+      // not a detection: log it and try again on the next tick.
+      bool compromised = false;
+      try {
+        compromised = assessDevice(options).compromised;
+      } catch (const std::exception& error) {
+        std::fprintf(stderr, "SecurityWatchdog check failed: %s\n", error.what());
+#if defined(__APPLE__)
+        os_log(OS_LOG_DEFAULT, "SecurityWatchdog check failed: %{public}s", error.what());
+#endif
+      } catch (...) {
+        std::fprintf(stderr, "SecurityWatchdog check failed with an unknown error.\n");
+#if defined(__APPLE__)
+        os_log(OS_LOG_DEFAULT, "SecurityWatchdog check failed with an unknown error.");
+#endif
+      }
+      if (compromised) {
         switch (_protectionMode) {
           case ProtectionMode::LOG_ONLY:
             std::fprintf(stderr, "SecurityWatchdog detected a compromised device.\n");

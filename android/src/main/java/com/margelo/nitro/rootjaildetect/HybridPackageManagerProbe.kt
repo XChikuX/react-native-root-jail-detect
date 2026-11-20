@@ -33,7 +33,7 @@ class HybridPackageManagerProbe : HybridPackageManagerProbeSpec() {
       ?: throw IllegalStateException("Android application context is unavailable")
     val packageManager = context.packageManager
 
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+    val installer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       packageManager
         .getInstallSourceInfo(context.packageName)
         .installingPackageName
@@ -41,6 +41,8 @@ class HybridPackageManagerProbe : HybridPackageManagerProbeSpec() {
       @Suppress("DEPRECATION")
       packageManager.getInstallerPackageName(context.packageName)
     }
+    // Some OEM builds report a blank string instead of null for "no record".
+    return installer?.takeIf { it.isNotBlank() }
   }
 
   private val knownRootPackages = mapOf(
@@ -96,6 +98,10 @@ class HybridPackageManagerProbe : HybridPackageManagerProbeSpec() {
         // Package not installed, continue
       } catch (e: SecurityException) {
         // Package visibility or host policy can deny the query.
+      } catch (e: RuntimeException) {
+        // Binder failures (dead system server, transaction errors) surface as
+        // unchecked exceptions. Inability to query one package is not a
+        // detection and must not abort the remaining lookups.
       }
     }
     return installedPackages.toTypedArray()

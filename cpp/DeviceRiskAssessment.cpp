@@ -7,7 +7,9 @@
 #include "IOSChecks.hpp"
 #include "Scoring.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <utility>
 
 namespace margelo::nitro::rootjaildetect {
@@ -17,8 +19,18 @@ namespace margelo::nitro::rootjaildetect {
     // intentionally kept out of this local assessment pass.
     (void) options.enablePlayIntegrity;
     const auto startTime = std::chrono::steady_clock::now();
+    // Clamp the budget before converting it. `configure()` accepts any positive
+    // finite value, and a caller meaning "no timeout" may pass something like
+    // `Number.MAX_VALUE`; converting that to the clock's integer tick type
+    // overflows (undefined behavior) and can yield a deadline in the past,
+    // which would silently skip every check. One hour is far beyond any real
+    // pass and safely representable.
+    constexpr double kMaxTimeoutMs = 60.0 * 60.0 * 1000.0;
+    const double timeoutMs = std::isfinite(options.timeoutMs) && options.timeoutMs > 0.0
+      ? std::min(options.timeoutMs, kMaxTimeoutMs)
+      : kMaxTimeoutMs;
     const auto deadline = startTime + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-      std::chrono::duration<double, std::milli>(options.timeoutMs)
+      std::chrono::duration<double, std::milli>(timeoutMs)
     );
 
 #if defined(NDEBUG)

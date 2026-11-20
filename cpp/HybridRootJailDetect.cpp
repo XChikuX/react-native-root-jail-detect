@@ -10,11 +10,14 @@
 #include <NitroModules/HybridObjectRegistry.hpp>
 #include <NitroModules/Promise.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace margelo::nitro::rootjaildetect {
 
@@ -23,20 +26,26 @@ namespace margelo::nitro::rootjaildetect {
       _configuration(std::make_shared<RootJailDetectConfiguration>()) {}
 
   void HybridRootJailDetect::configure(const RootJailDetectOptions& options) {
+    // Validate everything before applying anything, so a rejected call never
+    // leaves the configuration half-updated (for example a new `minScore`
+    // applied while the invalid `timeoutMs` in the same call throws).
+    if (options.minScore.has_value() &&
+        (!std::isfinite(options.minScore.value()) || options.minScore.value() < 0.0 ||
+         options.minScore.value() > 100.0)) {
+      throw std::invalid_argument("minScore must be a finite value from 0 to 100.");
+    }
+    if (options.timeoutMs.has_value() &&
+        (!std::isfinite(options.timeoutMs.value()) || options.timeoutMs.value() <= 0.0)) {
+      throw std::invalid_argument("timeoutMs must be a positive finite value.");
+    }
+
     std::scoped_lock lock(_configuration->mutex);
     // Keep previous values when an option is omitted (`undefined`), matching
     // the public contract that `configure()` only updates provided fields.
     if (options.minScore.has_value()) {
-      if (!std::isfinite(options.minScore.value()) || options.minScore.value() < 0.0 ||
-          options.minScore.value() > 100.0) {
-        throw std::invalid_argument("minScore must be a finite value from 0 to 100.");
-      }
       _configuration->options.minScore = options.minScore.value();
     }
     if (options.timeoutMs.has_value()) {
-      if (!std::isfinite(options.timeoutMs.value()) || options.timeoutMs.value() <= 0.0) {
-        throw std::invalid_argument("timeoutMs must be a positive finite value.");
-      }
       _configuration->options.timeoutMs = options.timeoutMs.value();
     }
     if (options.includeEvidence.has_value()) {
@@ -50,7 +59,18 @@ namespace margelo::nitro::rootjaildetect {
     }
     if (options.urlSchemes.has_value()) {
       if (options.urlSchemes.value().schemes.has_value()) {
-        _configuration->options.urlSchemes = options.urlSchemes.value().schemes.value();
+        // Drop empty and repeated entries: an empty scheme can never respond,
+        // and a duplicate would cost a second main-thread hop per pass and
+        // emit a duplicate per-scheme signal. First occurrence wins.
+        std::vector<std::string> schemes;
+        for (const std::string& scheme : options.urlSchemes.value().schemes.value()) {
+          if (scheme.empty() ||
+              std::find(schemes.begin(), schemes.end(), scheme) != schemes.end()) {
+            continue;
+          }
+          schemes.push_back(scheme);
+        }
+        _configuration->options.urlSchemes = std::move(schemes);
       }
       if (options.urlSchemes.value().perSchemeSignals.has_value()) {
         _configuration->options.urlSchemesPerSignal = options.urlSchemes.value().perSchemeSignals.value();

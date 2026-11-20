@@ -159,4 +159,28 @@ void runIOSMatcherTests() {
     assert(rootless.has_value() && classic.has_value());
     assert(rootless->score + classic->score == 40.0);
   }
+
+  // ---- App-identity-aware image matching -------------------------------------
+  {
+    constexpr std::string_view mainExe =
+      "/private/var/containers/Bundle/Application/1A2B/FridaKahlo.app/FridaKahlo";
+    // The app's own executable and its ordinary frameworks never match on the
+    // bundle name.
+    assert(!matchLoadedImage(mainExe, mainExe).frida);
+    assert(!matchLoadedImage(
+      "/private/var/containers/Bundle/Application/1A2B/FridaKahlo.app/Frameworks/hermes.framework/hermes",
+      mainExe).frida);
+    // Baseline: the single-argument matcher does flag those paths.
+    assert(matchLoadedImage(mainExe).frida);
+    // An embedded gadget inside the bundle is still caught.
+    assert(matchLoadedImage(
+      "/private/var/containers/Bundle/Application/1A2B/FridaKahlo.app/Frameworks/FridaGadget.dylib",
+      mainExe).frida);
+    // Images outside the bundle are matched on the full path.
+    assert(matchLoadedImage("/usr/lib/frida/frida-agent.dylib", mainExe).frida);
+    assert(matchLoadedImage("/var/jb/usr/lib/TweakInject.dylib", mainExe).hook);
+    assert(!matchLoadedImage("/usr/lib/libSystem.B.dylib", mainExe).hook);
+    // Unknown main executable: identical to the single-argument matcher.
+    assert(matchLoadedImage("/usr/lib/frida/frida-agent.dylib", "").frida);
+  }
 }

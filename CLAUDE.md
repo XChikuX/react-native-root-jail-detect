@@ -19,12 +19,12 @@ Use the versions and package manager committed to the repository:
 
 - Node.js: `v22.20.0` from `.nvmrc`
 - Bun: `1.3.10+` from `packageManager`
-- React Native: `0.83.10` (New Architecture only)
+- React Native: `0.86.x` (New Architecture only)
 - React: `19.2.7`
 - TypeScript: `7.0.x` strict mode (TypeScript 7+ removed `noImplicitUseStrict` / `noStrictGenericChecks`; do not reintroduce them)
-- ESLint: `10.x`, native flat config in `eslint.config.mjs` (do not reintroduce the legacy `FlatCompat` wrapper around `@react-native/eslint-config` — it uses ESLint internals removed in v10)
-- Jest: `30.x`. The Jest config in `package.json` overrides `testEnvironment` to `jest/environment.js`, which re-exports the top-level `jest-environment-node` (v30). Do **not** add a `package.json` `overrides` entry for `jest-environment-node` — npm 11 rejects it as a direct-dependency conflict, which breaks `npm publish` and CI. The `jest/environment.js` shim is the only workaround that satisfies both Bun and npm.
-- Nitro Modules: `react-native-nitro-modules` + `nitrogen` codegen. `peerDependencies` allows `>=0.35.10`; `0.35.10+` and `0.36.x` are verified (see the compatibility matrix in `README.md`), `0.37.x+` is unverified. The committed `nitrogen/generated/` tree was produced by nitrogen `0.36.1`, so regenerate with a matching nitrogen CLI (`npx nitrogen@0.36.1` — the CLI is **not** in `node_modules/.bin`; `bun run specs` resolves it from the workspace).
+- ESLint: `10.x`, native flat config in `eslint.config.mjs`. Note: the config has no TypeScript parser, so `.ts`/`.tsx` files are currently skipped ("File ignored" warning); `typescript-eslint` does not support TypeScript 7 yet. Use `npx prettier --check` on changed files until it does. Do not reintroduce the legacy `FlatCompat` wrapper around `@react-native/eslint-config` — it uses ESLint internals removed in v10.
+- Jest: `30.x` with the `@react-native/jest-preset` preset (React Native 0.86 moved the preset out of `react-native`; `preset: 'react-native'` now throws). The Jest config in `package.json` overrides `testEnvironment` to `jest/environment.js`, which re-exports the top-level `jest-environment-node` (v30). Do **not** add a `package.json` `overrides` entry for `jest-environment-node` — npm 11 rejects it as a direct-dependency conflict, which breaks `npm publish` and CI. The `jest/environment.js` shim is the only workaround that satisfies both Bun and npm.
+- Nitro Modules: `react-native-nitro-modules` + `nitrogen` codegen. `peerDependencies` allows `>=0.35.10`; `0.35.10+`, `0.36.x`, and `0.37.x` are supported (see the compatibility matrix in `README.md`), `0.38.x`/`1.x`+ is unverified. The example app pins `~0.37.2` and the committed `nitrogen/generated/` tree was produced by nitrogen `0.37.2`, so regenerate with a matching nitrogen CLI (`npx nitrogen@0.37.2` — the CLI is **not** in `node_modules/.bin`; `bun run specs` resolves it from the workspace).
 - Android: Kotlin `2.2.0`, min SDK 24, compile/target SDK 36, AGP `8.8.2` (library) — example app uses the React Native Gradle plugin's AGP, Gradle `9.0.0`, and NDK `27.1.12297006`. Gradle may run on JDK 17, 21, or 23; JDK 21 is valid and does not require installing JDK 17. Java and Kotlin bytecode must both target JVM 17 (`sourceCompatibility`/`targetCompatibility` and Kotlin `jvmTarget`/`compilerOptions.jvmTarget`) to avoid incompatible class targets. When the app uses a newer runtime JDK, configure this target consistently for the app and every Android subproject, including autolinked dependencies.
 - iOS: minimum version supplied by React Native's `min_ios_version_supported`, Xcode 16.4+ (validated on Xcode 26.5), Swift 5.9+, C++20
 
@@ -330,7 +330,7 @@ bun run build
 # Regenerate Nitrogen bindings after any .nitro.ts change
 # `nitrogen` is NOT in node_modules/.bin; bun run specs resolves it via Bun
 # workspace. If it ever errors with "command not found", run it directly:
-#   npx nitrogen@0.36.1
+#   npx nitrogen@0.37.2
 bun run specs
 ```
 
@@ -440,7 +440,7 @@ degrades to the stub.
 
 ### Gotchas (machine-specific)
 
-- **iOS — `nitrogen` CLI is not installed.** `bun run specs` resolves it from the workspace; if it errors with "command not found", run `npx nitrogen@0.36.1` instead. The committed `nitrogen/generated/` was produced by nitrogen `0.36.1`.
+- **iOS — `nitrogen` CLI is not installed.** `bun run specs` resolves it from the workspace; if it errors with "command not found", run `npx nitrogen@0.37.2` instead. The committed `nitrogen/generated/` was produced by nitrogen `0.37.2`.
 - **iOS — stale `Pods/`.** A failed prebuild leaves behind `Pods/` with `ReactAppDependencyProvider` from an older RN codegen run. Delete `example/ios/Pods` + `example/ios/Podfile.lock` and re-run `pod install` before retrying.
 - **Android — daemon busy-spin on this Gradle/AGP pair.** Gradle 9.0.0 + AGP 8.12.0 (from `@react-native/gradle-plugin`) has been observed to spin a daemon JVM on `:app:mergeDebugShaders` with no child processes. The native library still compiles cleanly. If you hit it, kill the daemon (`jps` then `kill <pid>`), and retry with `--info` to localize; if it reproduces, downgrade Gradle wrapper to `8.x` known to match AGP 8.12.
 - **Android — JDK detection.** Without the toolchain overrides in `example/android/gradle.properties`, Gradle attempts foojay auto-provisioning, which fails on this host kernel string. Do not delete those lines.

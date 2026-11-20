@@ -379,6 +379,53 @@ int main() {
     assert(!lookupSignal("android.unknown.future_id").has_value());
   }
 
+  // ---- Own-package redaction -------------------------------------------------
+  {
+    using namespace std::string_view_literals;
+    assert(ownPackageFromCmdline("com.fridakahlo.gallery\0\0"sv) == "com.fridakahlo.gallery");
+    assert(ownPackageFromCmdline("com.example.app:remote\0"sv) == "com.example.app");
+    assert(ownPackageFromCmdline("zygote64\0"sv).empty());
+    assert(ownPackageFromCmdline(""sv).empty());
+    assert(ownPackageFromCmdline("/system/bin/app_process.x\0"sv).empty());
+
+    // An app whose package contains a token must not flag itself...
+    constexpr std::string_view ownMaps =
+      "1000-2000 r-xp 00000000 fd:00 1 /data/app/~~a==/com.fridakahlo.gallery-b==/base.apk\n";
+    assert(!scanMapsForHooks(ownMaps).empty());
+    std::string storage;
+    assert(scanMapsForHooks(redactOwnPackage(ownMaps, "com.fridakahlo.gallery", storage)).empty());
+
+    // ...but a real agent mapped into that same app is still caught.
+    constexpr std::string_view injectedMaps =
+      "1000-2000 r-xp 00000000 fd:00 1 /data/app/~~a==/com.fridakahlo.gallery-b==/base.apk\n"
+      "3000-4000 r-xp 00000000 fd:00 2 /data/local/tmp/frida-agent-64.so\n";
+    std::string storage2;
+    const auto injected =
+      scanMapsForHooks(redactOwnPackage(injectedMaps, "com.fridakahlo.gallery", storage2));
+    assert(injected.size() == 1 && injected.front().signalId == SignalId::ANDROID_MAPS_FRIDA);
+
+    // Mount lines carrying the app's own data directory.
+    constexpr std::string_view ownMounts =
+      "36 35 253:1 /data/com.megapatch.game /data/data/com.megapatch.game rw - ext4 /dev/block/dm-1 rw\n";
+    assert(!scanMountsForRootArtifacts(ownMounts, "").empty());
+    std::string storage3;
+    assert(scanMountsForRootArtifacts(
+      redactOwnPackage(ownMounts, "com.megapatch.game", storage3), "").empty());
+
+    // No token in the package: content is returned untouched (no copy).
+    std::string storage4;
+    assert(redactOwnPackage(ownMaps, "com.example.app", storage4).data() == ownMaps.data());
+    assert(redactOwnPackage(ownMaps, "", storage4).data() == ownMaps.data());
+  }
+
+  // ---- TracerPid must start a line ---------------------------------------------
+  {
+    assert(parseTracerPid("Name:\tTracerPid:9\nState:\tS\nTracerPid:\t0\n").value() == 0);
+    assert(parseTracerPid("Name:\tapp\nTracerPid:\t42\n").value() == 42);
+    assert(parseTracerPid("TracerPid:\t7\n").value() == 7);
+    assert(!parseTracerPid("Name:\tTracerPid:9\n").has_value());
+  }
+
   // ---- Sub-suites ----------------------------------------------------------
   runDenyListFingerprintTests();
   runOverlayFsTests();

@@ -14,6 +14,7 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
@@ -187,12 +188,18 @@ namespace margelo::nitro::rootjaildetect {
     // gadget patterns. At most ONE dyld signal is emitted per pass — the
     // scan answers "is a hooking/injection image loaded", not "how many";
     // duplicate emissions would double-count the same evidence.
+    // Image 0 is the app's main executable. Its path anchors the app bundle so
+    // the app's own name is not matched against the token corpus (see the
+    // two-argument `matchLoadedImage`).
+    const char* mainExecutable = _dyld_image_count() > 0 ? _dyld_get_image_name(0) : nullptr;
+    const std::string_view mainExecutablePath =
+      mainExecutable != nullptr ? std::string_view(mainExecutable) : std::string_view();
     for (uint32_t index = 0; index < _dyld_image_count(); ++index) {
       const char* image = _dyld_get_image_name(index);
       if (image == nullptr) {
         continue;
       }
-      const IOSImageVerdict verdict = matchLoadedImage(image);
+      const IOSImageVerdict verdict = matchLoadedImage(image, mainExecutablePath);
       if (verdict.frida) {
         result.signals.push_back(
           buildSignal(SignalId::IOS_DYLD_HOOK, "frida-or-gadget-image", includeEvidence)
@@ -283,6 +290,14 @@ namespace margelo::nitro::rootjaildetect {
         const std::optional<SignalSpec> aggregateSpec =
           lookupSignal(SignalId::IOS_URLSCHEME_JAILBREAK_STORE);
         for (const std::string& scheme : context.urlSchemes) {
+          // Each probe is a synchronous hop to the main thread, and the list
+          // is caller-configurable, so honor the pass budget between schemes.
+          // Schemes already answered still count; the rest are unavailable.
+          if (expired(deadline)) {
+            result.partial = true;
+            result.signals.push_back(unavailableSignal(SignalId::IOS_CHECK_URLSCHEME));
+            break;
+          }
           bool canOpen = probe->canOpenUrl(scheme);
           if (canOpen) {
             anySchemeResponded = true;
